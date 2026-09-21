@@ -26,3 +26,4 @@ dist-ssr
 #추가 gitigonore
 .venv
 .env
+uploads
