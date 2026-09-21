@@ -10,6 +10,7 @@ from ocr_service import test_ocr
 from sqlalchemy import create_engine, Column, Integer, String, Text
 from sqlalchemy.orm import declarative_base, sessionmaker
 from pgvector.sqlalchemy import Vector
+from model_service import call_ollama
 
 # 환경 변수 로드 및 모델 초기화
 dotenv.load_dotenv()
@@ -130,7 +131,8 @@ def querying(queries: list[str]):
         similarity_expr = 1 - DocuModel.embed.cosine_distance(query_emb_list)
         
         results = session.query(
-            DocuModel.filename, 
+            DocuModel.filename,
+            DocuModel.content,
             similarity_expr.label("cosine_similarity")
         ).order_by(
             DocuModel.embed.cosine_distance(query_emb_list)
@@ -145,10 +147,20 @@ def querying(queries: list[str]):
         # 4. 검색 결과 및 소요 시간 출력
         print("\n=== 검색 결과 ===")
         print(f"임베딩 모델: {MODEL_NAME}")
-        for i, (filename, similarity) in enumerate(results, start=1):
+        contents =[]
+        for i, (filename,content, similarity) in enumerate(results, start=1):
             print(f"Top {i}: {filename} (유사도: {similarity:.4f})")
+            contents.append(content)
         
         print(f"\n 쿼리 총 소요 시간: {elapsed_time:.4f}초")
+        result = call_ollama(question= " ".join(queries), docu=" ".join(contents))
+        
+        end_time2 = time.time()
+        elapsed_time2 = end_time2 - end_time
+
+        print(f"\n LLM 추론 소요 시간: {elapsed_time2:.4f}초")
+        print(f"LLM 모델 답변: {result}")
+
 
     except Exception as e:
         session.rollback()
@@ -160,6 +172,7 @@ def querying(queries: list[str]):
 
 # 실행 예시
 if __name__ == "__main__":
-    queries = ["글로벌 아카데미 출석 인정이 궁금해"]
+    #save_docu(filenames=["파일 이름 확장자 포함해서, 배열이니까 파일 여러개 넣을 수 있음"])
+    queries = ["출석으로 인정되는 휴가 사유가 있니?"]
     querying(queries=queries)
     pass
