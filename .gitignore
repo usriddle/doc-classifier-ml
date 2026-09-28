@@ -28,3 +28,6 @@ dist-ssr
 .env
 uploads
 __pycache__
+unsloth_compiled_cache
+outputs
+modelfiles
