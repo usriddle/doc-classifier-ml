@@ -12,6 +12,7 @@ PC 에 GPU 가 없어도 됩니다. **구글 드라이브에 이 폴더를 올�
 LoRA 어댑터가 드라이브의 `backend/adapters/<이름>/` 에 저장됩니다.
 
 ```
+backend.zip = 현재 저장소의 dcm-back 부분을 backend.zip 이름으로 압축해서 사용
 ① backend.zip 을 내 드라이브에 올려 풀기  →  ② Colab 에서 colab_train.ipynb 열기  →  ③ GPU 고르기
 → ④ 0~3 단계(설치·재시작)  →  ⑤ 3-1 부터 13 단계까지 차례로  →  ⑥ adapters/<이름>/ 결과 공유
 ```
