@@ -186,6 +186,7 @@ def intent_block() -> str:
     for i, intent in enumerate(INTENTS, start=1):
         lines.append(f"{i}. {intent.name} : {intent.description}")
     lines.append("조회·수정·삭제는 민원 번호 대신 주제·시점으로 가리켜도 된다.")
+    lines.append("전입신고·여권·대관 같은 행정 업무의 처리 지연이나 절차 불편을 알리는 것은 접수, 이 창구에 이미 넣은 민원의 진행을 묻는 것은 조회다.")
     return "\n".join(lines)
 
 

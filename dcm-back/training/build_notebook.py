@@ -192,8 +192,10 @@ LLM_4BIT_COMPUTE_DTYPE=auto
 LLM_ENABLE_THINKING=false
 CANDIDATE_MIN_SCORE=0.65
 CASE_BLEND_WEIGHT=0.2
-CANDIDATE_SCORING=single
+CANDIDATE_SCORING=multi
 CASE_MODE=low_confidence
+CASE_TOP_K=5
+CASE_MIN_SCORE=0.5
 GATE_ENABLED=true
 ''', encoding='utf-8')
     print('.env 가 없어 서버 노트북과 같은 값으로 만들었습니다.')
@@ -395,6 +397,9 @@ md("""
 
 **라벨링 규칙** — 정답이 흔들리면 모델도 흔들립니다.
 - `location` 은 원문 표현을 **그대로** 옮깁니다. "우리 동네", "여기", "근처"처럼 장소를 좁혀 주지 않는 말만 있으면 `""`. (검증이 원문에 없는 위치를 잡아냅니다)
+  민원 대상 시설물·물건(가로수, 담장, 전봇대, CCTV …)은 넣지 않고 장소까지만 (`들꽃길 주택 담장이 기울어서` → `들꽃길 주택`). 어긋나 보이면 `🔎` 경고가 나옵니다.
+- 의도 경계: 전입신고·여권·대관 같은 **행정 업무의 처리 지연·절차 불편**은 `접수`, **이미 넣은 민원의 진행**을 묻는 말은 `조회`.
+- 카테고리 경계: 공사장 소음 → 주택건축, 도로 먼지·거리 청소 → 환경·위생, 홈페이지 장애·공무원 칭찬 → 기타.
 - 장소가 두 번 나오면 **민원이 발생한 곳**이 정답입니다. 수정의 "A에서 B로"는 새 위치 B 가 정답입니다.
 - `content` 는 "무엇이 어떤 상태인지"를 명사형으로 짧게 (예: `가로등 꺼짐`). 위치·기간·요청 문구는 넣지 않습니다.
 - 말만 바꿔 늘린 변형은 같은 `group` 으로 묶으세요. 같은 group 은 같은 쪽(학습/검증/평가)에 들어갑니다.
@@ -445,6 +450,8 @@ display(summary)
 tags = pd.DataFrame({side: pd.Series(R.summarize(recs)['태그']) for side, recs in parts.items()}).fillna(0).astype(int)
 display(tags[~tags.index.str.startswith('의도:')])
 
+for w in R.lint(records)[:20]:
+    print('🔎', w)
 for w in R.split_warnings(parts):
     print('⚠️', w)
 

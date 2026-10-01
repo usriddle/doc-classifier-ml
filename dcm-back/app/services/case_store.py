@@ -156,6 +156,7 @@ def _fingerprint(csv_bytes: bytes) -> str:
         str(settings.SUMMARY_MAX_SENTENCES),
         str(settings.SUMMARY_MAX_CHARS),
         str(_QUERY_VERSION),
+        keyphrase.query_signature(),
     ]
     return hashlib.sha256("|".join(parts).encode("utf-8")).hexdigest()
 

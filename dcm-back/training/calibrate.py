@@ -53,7 +53,7 @@ def _query_signature(texts: list[str]) -> str:
         settings.EMBED_MODEL, str(settings.EMBED_NORMALIZE), str(settings.EMBED_MAX_SEQ_LENGTH),
         str(settings.KEYWORD_TOP_K), str(settings.KEYWORD_USE_MMR), str(settings.KEYWORD_MMR_DIVERSITY),
         str(settings.SUMMARY_MAX_SENTENCES), str(settings.SUMMARY_MAX_CHARS),
-        str(settings.PIPELINE_MAX_INPUT_CHARS),
+        str(settings.PIPELINE_MAX_INPUT_CHARS), keyphrase.query_signature(),
         hashlib.sha256("\n".join(texts).encode("utf-8")).hexdigest(),
     ]
     return hashlib.sha256("|".join(parts).encode("utf-8")).hexdigest()[:16]

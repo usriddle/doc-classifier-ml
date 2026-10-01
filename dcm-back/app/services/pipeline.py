@@ -358,6 +358,7 @@ def render_debug_text(result: PipelineResult) -> str:
         "===== ②→③ 키워드 3개 + 요약문 =====",
         f"키워드({kp.method}) : {keyword_line}",
         f"요약문             : {kp.summary or '(없음)'}",
+        f"뺀 상투 문장       : {' / '.join(getattr(kp, 'dropped', []) or []) or '(없음)'}",
         "",
         "-- 임베딩 모델에 넘긴 질의문 --",
         kp.query_text,

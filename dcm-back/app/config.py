@@ -71,6 +71,12 @@ class Settings(BaseSettings):
     SUMMARY_MAX_CHARS: int = 400
     SUMMARY_DAMPING: float = 0.85     # PageRank 감쇠 계수
     SUMMARY_ITERATIONS: int = 30
+    # ④ 질의문에서 상투 문구("여러 번 말씀드렸어요", "신속한 처리 부탁드립니다" …)를 뺍니다. ⑤ 입력은 그대로.
+    QUERY_DROP_BOILERPLATE: bool = True
+    # 상투 문구를 뺀 본문이 이 글자 수 이하면 요약하지 않고 전부 씁니다.
+    SUMMARY_FULL_TEXT_CHARS: int = 200
+    # TextRank 로 고를 때도 첫 문장은 항상 넣습니다. (핵심이 대개 첫 문장)
+    SUMMARY_KEEP_FIRST: bool = True
 
     # --- ③ 임베딩 (bge-m3) ---
     EMBED_MODEL: str = "BAAI/bge-m3"  # 1024차원. 학습하지 않고 그대로 사용합니다.
@@ -84,10 +90,10 @@ class Settings(BaseSettings):
     # 열어 후보를 재정렬합니다. (아래 게이트의 반려 기준은 아닙니다)
     CANDIDATE_MIN_SCORE: float = 0.65  # 학습 노트북 6-1 측정으로 고른 값 (예전 기본 0.45)
     # 카테고리 점수 계산 방식
-    #   single : 카테고리 정의문(설명+키워드 전체) 벡터 1개와 비교 (기존 방식)
+    #   single : 카테고리 정의문(설명+키워드 전체) 벡터 1개와 비교 (예전 기본)
     #   multi  : 정의문 벡터 + 키워드 하나하나의 벡터 중 가장 가까운 것의 점수
     #            (주제가 많은 카테고리가 '평균 벡터' 때문에 흐려지는 문제를 줄임)
-    CANDIDATE_SCORING: str = "single"
+    CANDIDATE_SCORING: str = "multi"   # 학습 노트북 6-1 측정으로 고른 값
 
     # --- ④ 보조 : 벡터DB (라벨링된 사례) ---
     # ④ 가 low_confidence 일 때만 비슷한 사례의 라벨로 top-3 후보를 재정렬합니다.

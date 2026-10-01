@@ -61,6 +61,7 @@ def _candidate_signature() -> str:
         "case_mode": case_store.mode(),
         "scoring": getattr(settings, "CANDIDATE_SCORING", "single"),
         "cand_top_k": settings.CANDIDATE_TOP_K,
+        "query": keyphrase.query_signature(),   # ④ 질의문 만드는 방식 (상투 문구 제거 등)
         # 요약(프롬프트)뿐 아니라 키워드까지 포함한 임베딩 정의문 전체 - 키워드만 고쳐도 캐시를 버립니다.
         "categories": hashlib.sha256(
             "\n".join([categories.prompt_block()] + [c.embedding_text for c in categories.CATEGORIES]).encode()
