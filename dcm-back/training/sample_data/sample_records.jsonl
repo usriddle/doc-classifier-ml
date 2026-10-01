@@ -1,0 +1,91 @@
+// 예시 정답 레코드입니다. 구조를 보여 주고 노트북을 끝까지 돌려 보기 위한 것이며, 실제 개선을 보려면 훨씬 많은 데이터가 필요합니다.
+{"id": "s0001", "group": "gA", "text": "행복로 23길 버스정류장 앞 가로등 두 개가 일주일째 꺼져 있어요. 밤에 너무 어둡습니다.", "intent": "접수", "category": "국토교통", "arguments": {"content": "버스정류장 앞 가로등 2개 일주일째 꺼짐", "location": "행복로 23길 버스정류장 앞"}}
+{"id": "s0002", "group": "gA", "text": "행복로23길 정류장 앞에 가로등 불이 안 들어와요 벌써 일주일째임", "intent": "접수", "category": "국토교통", "arguments": {"content": "정류장 앞 가로등 일주일째 꺼짐", "location": "행복로23길 정류장 앞"}, "tags": ["구어체"]}
+{"id": "s0003", "group": "g0003", "text": "아파트 앞 도로에 포트홀이 생겨서 차가 덜컹거립니다. 보수해 주세요.", "intent": "접수", "category": "국토교통", "arguments": {"content": "도로 포트홀로 차량 통행 불편, 보수 요청", "location": "아파트 앞 도로"}}
+{"id": "s0004", "group": "g0004", "text": "중앙시장 사거리 신호등이 계속 노란불만 깜빡여서 사고 날 뻔했어요", "intent": "접수", "category": "국토교통", "arguments": {"content": "사거리 신호등 고장(노란불 점멸)", "location": "중앙시장 사거리"}}
+{"id": "s0005", "group": "g0005", "text": "시청역 3번 출구 앞 보도블록이 들떠서 할머니가 넘어지셨어요. 빨리 고쳐주세요", "intent": "접수", "category": "국토교통", "arguments": {"content": "보도블록 들뜸으로 보행자 넘어짐, 보수 요청", "location": "시청역 3번 출구 앞"}}
+{"id": "s0006", "group": "g0006", "text": "새마을로 45 앞 맨홀 뚜껑이 덜컹거리고 조금 열려 있습니다", "intent": "접수", "category": "국토교통", "arguments": {"content": "맨홀 뚜껑 헐거움·열림", "location": "새마을로 45 앞"}}
+{"id": "s0007", "group": "g0007", "text": "햇빛초등학교 정문 앞 횡단보도 페인트가 다 지워져서 잘 안 보여요", "intent": "접수", "category": "국토교통", "arguments": {"content": "횡단보도 노면 표시 지워짐", "location": "햇빛초등학교 정문 앞"}}
+{"id": "s0008", "group": "g0008", "text": "푸른마을 3단지 분리수거장에 음식물 쓰레기가 넘쳐서 냄새가 심해요", "intent": "접수", "category": "환경·위생", "arguments": {"content": "분리수거장 음식물 쓰레기 넘침·악취", "location": "푸른마을 3단지 분리수거장"}}
+{"id": "s0009", "group": "g0009", "text": "강변공원 산책로 옆에 누가 폐가구를 몰래 버리고 갔어요", "intent": "접수", "category": "환경·위생", "arguments": {"content": "폐가구 무단투기", "location": "강변공원 산책로 옆"}}
+{"id": "s0010", "group": "g0010", "text": "동부시장 뒷골목에 쓰레기 무단투기가 매일 있어요 cctv라도 달아주세요", "intent": "접수", "category": "환경·위생", "arguments": {"content": "상습 쓰레기 무단투기, CCTV 설치 요청", "location": "동부시장 뒷골목"}, "tags": ["구어체"]}
+{"id": "s0011", "group": "g0011", "text": "한빛빌라 옆 공장에서 밤마다 매캐한 냄새가 나서 창문을 못 열어요", "intent": "접수", "category": "환경·위생", "arguments": {"content": "인근 공장 야간 악취", "location": "한빛빌라 옆 공장"}}
+{"id": "s0012", "group": "g0012", "text": "은행동 먹자골목 식당들이 새벽까지 음악을 크게 틀어서 잠을 못 자요", "intent": "접수", "category": "환경·위생", "arguments": {"content": "식당가 새벽 소음", "location": "은행동 먹자골목"}}
+{"id": "s0013", "group": "g0013", "text": "우리 아파트 윗집 층간소음이 너무 심합니다. 관리사무소도 해결을 못 해줘요. 101동 1203호입니다", "intent": "접수", "category": "주택건축", "arguments": {"content": "윗집 층간소음, 관리사무소 해결 안 됨", "location": "101동 1203호"}}
+{"id": "s0014", "group": "g0014", "text": "다솜빌라 2층 베란다를 불법으로 확장한 것 같아요 확인 부탁드립니다", "intent": "접수", "category": "주택건축", "arguments": {"content": "빌라 베란다 불법 확장 의심, 확인 요청", "location": "다솜빌라 2층"}}
+{"id": "s0015", "group": "g0015", "text": "산호동 12-3 옹벽에 금이 크게 가 있어서 무너질까 봐 무서워요", "intent": "접수", "category": "주택건축", "arguments": {"content": "옹벽 균열로 붕괴 우려", "location": "산호동 12-3"}}
+{"id": "s0016", "group": "g0016", "text": "새봄아파트 공사장에서 아침 6시부터 공사를 해요. 너무 시끄러워요", "intent": "접수", "category": "주택건축", "arguments": {"content": "공사장 이른 아침 소음", "location": "새봄아파트 공사장"}}
+{"id": "s0017", "group": "g0017", "text": "주민센터 무인발급기가 고장 나서 등본을 못 뗐어요. 1층 입구 쪽 기계요", "intent": "접수", "category": "행정안전", "arguments": {"content": "무인발급기 고장으로 등본 발급 불가", "location": "주민센터"}}
+{"id": "s0018", "group": "g0018", "text": "구청 민원실 번호표 기계가 멈춰서 줄이 엉망이에요", "intent": "접수", "category": "행정안전", "arguments": {"content": "민원실 번호표 기계 고장", "location": "구청 민원실"}}
+{"id": "s0019", "group": "g0019", "text": "한결동 경로당 앞에 소화전이 가려지게 차가 매일 주차돼 있어요", "intent": "접수", "category": "소방", "arguments": {"content": "소화전 앞 상습 주차", "location": "한결동 경로당 앞"}}
+{"id": "s0020", "group": "g0020", "text": "상가 3층 비상구에 박스가 잔뜩 쌓여서 문이 안 열려요. 나래상가요", "intent": "접수", "category": "소방", "arguments": {"content": "비상구 적치물로 문 막힘", "location": "나래상가"}}
+{"id": "s0021", "group": "g0021", "text": "희망어린이집 옆 놀이터 미끄럼틀이 부서져서 아이가 다칠 뻔했어요", "intent": "접수", "category": "기타", "arguments": {"content": "놀이터 미끄럼틀 파손으로 안전 위험", "location": "희망어린이집 옆 놀이터"}}
+{"id": "s0022", "group": "g0022", "text": "보건소 2층 엘리베이터가 한 달째 고장이라 어르신들이 계단으로 다니세요", "intent": "접수", "category": "보건복지", "arguments": {"content": "보건소 엘리베이터 한 달째 고장", "location": "보건소 2층"}}
+{"id": "s0023", "group": "g0023", "text": "은행나무길 가로수가 기울어서 전선에 걸릴 것 같아요", "intent": "접수", "category": "기타", "arguments": {"content": "가로수 기울어 전선 접촉 우려", "location": "은행나무길"}}
+{"id": "s0024", "group": "g0024", "text": "사거리 편의점 앞 전봇대 전단지가 너덜너덜해서 보기 흉해요", "intent": "접수", "category": "기타", "arguments": {"content": "전봇대 불법 전단지 방치", "location": "사거리 편의점 앞"}}
+{"id": "s0025", "group": "g0025", "text": "신호등 고장났어요 대림사거리", "intent": "접수", "category": "국토교통", "arguments": {"content": "사거리 신호등 고장", "location": "대림사거리"}, "tags": ["짧은문장"]}
+{"id": "s0026", "group": "g0026", "text": "버스정류장 의자 부서짐 (꽃마을 정류장)", "intent": "접수", "category": "국토교통", "arguments": {"content": "버스정류장 의자 파손", "location": "꽃마을 정류장"}, "tags": ["짧은문장"]}
+{"id": "s0027", "group": "g0027", "text": "요즘 밤마다 동네 골목이 너무 어두워서 무서워요. 가로등을 더 설치해 주세요.", "intent": "접수", "category": "국토교통", "arguments": {"content": "골목이 어두워 가로등 추가 설치 요청", "location": ""}, "tags": ["위치없음"]}
+{"id": "s0028", "group": "g0028", "text": "길고양이 사료를 주는 사람 때문에 쓰레기가 너무 많아요", "intent": "접수", "category": "환경·위생", "arguments": {"content": "길고양이 사료 급식으로 쓰레기 증가", "location": ""}}
+{"id": "s0029", "group": "g0029", "text": "윗집에서 밤마다 쿵쿵거려서 잠을 못 자겠어요 도와주세요", "intent": "접수", "category": "주택건축", "arguments": {"content": "윗집 야간 층간소음", "location": ""}, "tags": ["구어체"]}
+{"id": "s0030", "group": "g0030", "text": "주민등록등본 온라인 발급이 계속 오류가 나요", "intent": "접수", "category": "행정안전", "arguments": {"content": "주민등록등본 온라인 발급 오류", "location": ""}}
+{"id": "s0031", "group": "g0031", "text": "배달 오토바이들이 인도로 다녀서 너무 위험합니다. 단속해 주세요", "intent": "접수", "category": "국토교통", "arguments": {"content": "배달 오토바이 인도 주행, 단속 요청", "location": ""}}
+{"id": "s0032", "group": "g0032", "text": "동네에 모기가 너무 많아요 방역 좀 해주세요", "intent": "접수", "category": "환경·위생", "arguments": {"content": "모기 많음, 방역 요청", "location": ""}}
+{"id": "s0033", "group": "g0033", "text": "독거노인 도시락 배달이 이번 주에 안 왔어요", "intent": "접수", "category": "보건복지", "arguments": {"content": "독거노인 도시락 배달 누락", "location": ""}}
+{"id": "s0034", "group": "g0034", "text": "아이 예방접종 문자가 안 와요. 확인 부탁드려요", "intent": "접수", "category": "보건복지", "arguments": {"content": "예방접종 안내 문자 미수신", "location": ""}}
+{"id": "s0035", "group": "g0035", "text": "산에서 누가 쓰레기를 태우는지 연기가 계속 나요", "intent": "접수", "category": "소방", "arguments": {"content": "쓰레기 소각 추정 연기 발생", "location": ""}}
+{"id": "s0036", "group": "g0036", "text": "저희 집 수돗물에서 녹물이 나와요", "intent": "접수", "category": "환경·위생", "arguments": {"content": "수돗물 녹물 발생", "location": ""}, "tags": ["위치없음"]}
+{"id": "s0037", "group": "g0037", "text": "무단 방치된 자전거가 몇 달째 그대로예요 치워주세요", "intent": "접수", "category": "기타", "arguments": {"content": "방치 자전거 수거 요청", "location": ""}}
+{"id": "s0038", "group": "g0038", "text": "도로에 빙판이 생겨서 미끄러워요. 제설 좀 해주세요!!", "intent": "접수", "category": "국토교통", "arguments": {"content": "도로 결빙, 제설 요청", "location": ""}, "tags": ["구어체"]}
+{"id": "s0039", "group": "g0039", "text": "제가 넣은 민원 목록 보여주세요.", "intent": "조회", "arguments": {"complaint_id": 0, "keyword": "", "period": "", "field": "list"}, "category": "없음"}
+{"id": "s0040", "group": "g0040", "text": "내 민원 뭐뭐 있었지", "intent": "조회", "arguments": {"complaint_id": 0, "keyword": "", "period": "", "field": "list"}, "tags": ["구어체"], "category": "없음"}
+{"id": "s0041", "group": "g0041", "text": "이번 달에 접수한 거 전부 확인하고 싶어요", "intent": "조회", "arguments": {"complaint_id": 0, "keyword": "", "period": "이번 달", "field": "list"}, "category": "없음"}
+{"id": "s0042", "group": "g0042", "text": "17번 민원 처리 상태 알려주세요", "intent": "조회", "arguments": {"complaint_id": 17, "keyword": "", "period": "", "field": "status"}, "category": "없음"}
+{"id": "s0043", "group": "g0043", "text": "어제 넣은 가로등 민원 어떻게 됐어요?", "intent": "조회", "arguments": {"complaint_id": 0, "keyword": "가로등", "period": "어제", "field": "status"}, "category": "국토교통"}
+{"id": "s0044", "group": "g0044", "text": "지난주에 신고한 층간소음 민원 진행 상황이 궁금합니다", "intent": "조회", "arguments": {"complaint_id": 0, "keyword": "층간소음", "period": "지난주", "field": "status"}, "category": "주택건축"}
+{"id": "s0045", "group": "g0045", "text": "불법 주차 신고 처리 이력 보여줘", "intent": "조회", "arguments": {"complaint_id": 0, "keyword": "주차", "period": "", "field": "history"}, "category": "국토교통"}
+{"id": "s0046", "group": "g0046", "text": "저번에 넣은 소음 민원 지금까지 어떻게 처리됐는지 알려주세요", "intent": "조회", "arguments": {"complaint_id": 0, "keyword": "소음", "period": "저번", "field": "history"}, "category": "없음"}
+{"id": "s0047", "group": "g0047", "text": "지난주에 넣은 민원 처리됐나요?", "intent": "조회", "arguments": {"complaint_id": 0, "keyword": "", "period": "지난주", "field": "status"}, "tags": ["경계"], "category": "없음"}
+{"id": "s0048", "group": "g0048", "text": "어제 신고한 가로등 건 확인 좀 해주세요", "intent": "조회", "arguments": {"complaint_id": 0, "keyword": "가로등", "period": "어제", "field": "status"}, "tags": ["경계"], "category": "국토교통"}
+{"id": "s0049", "group": "g0049", "text": "쓰레기 무단투기 관련해서 넣은 민원들 전부 보여 주세요", "intent": "조회", "arguments": {"complaint_id": 0, "keyword": "쓰레기", "period": "", "field": "list"}, "tags": ["짧은문장"], "category": "환경·위생"}
+{"id": "s0050", "group": "g0050", "text": "소화전 앞 주차 신고 담당자가 배정됐는지 확인해 주세요", "intent": "조회", "arguments": {"complaint_id": 0, "keyword": "소화전", "period": "", "field": "status"}, "category": "소방"}
+{"id": "s0051", "group": "g0051", "text": "어제 넣은 가로등 민원 위치를 행복로 15길로 바꿔주세요.", "intent": "수정", "arguments": {"complaint_id": 0, "keyword": "가로등", "period": "어제", "content": "", "location": "행복로 15길"}, "category": "국토교통"}
+{"id": "s0052", "group": "g0052", "text": "방금 넣은 민원 위치 잘못 적었어요 새마을로 12로 고쳐주세요", "intent": "수정", "arguments": {"complaint_id": 0, "keyword": "", "period": "방금", "content": "", "location": "새마을로 12"}, "tags": ["구어체"], "category": "없음"}
+{"id": "s0053", "group": "g0053", "text": "가로등 민원 내용을 가로등 3개가 꺼졌다로 수정해 주세요", "intent": "수정", "arguments": {"complaint_id": 0, "keyword": "가로등", "period": "", "content": "가로등 3개 꺼짐", "location": ""}, "category": "국토교통"}
+{"id": "s0054", "group": "g0054", "text": "지난주에 넣은 포트홀 신고 내용 바꿀게요. 포트홀이 두 군데로 늘었어요", "intent": "수정", "arguments": {"complaint_id": 0, "keyword": "포트홀", "period": "지난주", "content": "포트홀이 두 군데로 늘어남", "location": ""}, "category": "국토교통"}
+{"id": "s0055", "group": "g0055", "text": "12번 민원 위치는 중앙시장 사거리이고 내용은 신호등이 완전히 꺼졌다로 바꿔주세요", "intent": "수정", "arguments": {"complaint_id": 12, "keyword": "", "period": "", "content": "신호등이 완전히 꺼짐", "location": "중앙시장 사거리"}, "category": "없음"}
+{"id": "s0056", "group": "g0056", "text": "그저께 신고한 유기견 건 장소를 강변공원 입구로 변경해 주세요", "intent": "수정", "arguments": {"complaint_id": 0, "keyword": "유기견", "period": "그저께", "content": "", "location": "강변공원 입구"}, "category": "기타"}
+{"id": "s0057", "group": "g0057", "text": "악취 민원 내용 수정이요, 악취가 밤에만 나요", "intent": "수정", "arguments": {"complaint_id": 0, "keyword": "악취", "period": "", "content": "악취가 밤에만 발생", "location": ""}, "category": "환경·위생"}
+{"id": "s0058", "group": "g0058", "text": "누수 신고한 위치가 틀렸어요. 푸른마을 2단지예요", "intent": "수정", "arguments": {"complaint_id": 0, "keyword": "누수", "period": "", "content": "", "location": "푸른마을 2단지"}, "category": "주택건축"}
+{"id": "s0059", "group": "g0059", "text": "어제 넣은 민원 위치 바꿔주세요, 은행동 먹자골목으로요", "intent": "수정", "arguments": {"complaint_id": 0, "keyword": "", "period": "어제", "content": "", "location": "은행동 먹자골목"}, "tags": ["경계", "id없음"], "category": "없음"}
+{"id": "s0060", "group": "g0060", "text": "소음 민원 내용을 소음이 새벽 2시까지 계속된다로 고쳐주세요", "intent": "수정", "arguments": {"complaint_id": 0, "keyword": "소음", "period": "", "content": "소음이 새벽 2시까지 계속됨", "location": ""}, "category": "없음"}
+{"id": "s0061", "group": "g0061", "text": "가로등 민원은 해결돼서 취소하고 싶어요.", "intent": "삭제", "arguments": {"complaint_id": 0, "keyword": "가로등", "period": "", "reason": "해결됨"}, "category": "국토교통"}
+{"id": "s0062", "group": "g0062", "text": "어제 넣은 거 취소해주세요", "intent": "삭제", "arguments": {"complaint_id": 0, "keyword": "", "period": "어제", "reason": ""}, "category": "없음"}
+{"id": "s0063", "group": "g0063", "text": "지난주에 넣은 불법 주차 신고 철회할게요. 제가 잘못 신고했어요", "intent": "삭제", "arguments": {"complaint_id": 0, "keyword": "주차", "period": "지난주", "reason": "잘못 신고함"}, "category": "국토교통"}
+{"id": "s0064", "group": "g0064", "text": "포트홀 민원 이미 고쳐졌으니까 취소해 주세요", "intent": "삭제", "arguments": {"complaint_id": 0, "keyword": "포트홀", "period": "", "reason": "이미 고쳐짐"}, "category": "국토교통"}
+{"id": "s0065", "group": "g0065", "text": "12번 신고 취소요", "intent": "삭제", "arguments": {"complaint_id": 12, "keyword": "", "period": "", "reason": ""}, "tags": ["짧은문장"], "category": "없음"}
+{"id": "s0066", "group": "g0066", "text": "방금 넣은 민원은 중복으로 넣은 거라 지워주세요", "intent": "삭제", "arguments": {"complaint_id": 0, "keyword": "", "period": "방금", "reason": "중복 접수"}, "category": "없음"}
+{"id": "s0067", "group": "g0067", "text": "층간소음 민원 취소할게요 이사 가요", "intent": "삭제", "arguments": {"complaint_id": 0, "keyword": "층간소음", "period": "", "reason": "이사"}, "tags": ["구어체"], "category": "주택건축"}
+{"id": "s0068", "group": "g0068", "text": "벌집 제거 요청 없던 걸로 해주세요", "intent": "삭제", "arguments": {"complaint_id": 0, "keyword": "벌집", "period": "", "reason": ""}, "category": "소방"}
+{"id": "s0069", "group": "g0069", "text": "어제 넣은 소음 민원 취소하고 싶어요", "intent": "삭제", "arguments": {"complaint_id": 0, "keyword": "소음", "period": "어제", "reason": ""}, "tags": ["경계", "id없음"], "category": "없음"}
+{"id": "s0070", "group": "g0070", "text": "과태료 민원 삭제해 주세요. 제가 착각했어요", "intent": "삭제", "arguments": {"complaint_id": 0, "keyword": "과태료", "period": "", "reason": "착각함"}, "category": "행정안전"}
+{"id": "s0071", "group": "g0071", "text": "민원 처리 기간이 보통 얼마나 걸리나요?", "intent": "문의"}
+{"id": "s0072", "group": "g0072", "text": "접수한 민원은 취소할 수 있나요?", "intent": "문의"}
+{"id": "s0073", "group": "g0073", "text": "민원은 어떻게 접수하는 거예요?", "intent": "문의"}
+{"id": "s0074", "group": "g0074", "text": "취소한 민원을 다시 살릴 수 있어요?", "intent": "문의"}
+{"id": "s0075", "group": "g0075", "text": "어떤 종류의 민원을 넣을 수 있나요", "intent": "문의"}
+{"id": "s0076", "group": "g0076", "text": "처리 상태는 어디서 확인해요?", "intent": "문의", "tags": ["경계"]}
+{"id": "s0077", "group": "g0077", "text": "가로등 고장은 어느 부서에서 처리하나요?", "intent": "문의", "tags": ["경계"]}
+{"id": "s0078", "group": "g0078", "text": "민원 넣으면 답변은 문자로 오나요", "intent": "문의", "tags": ["구어체"]}
+{"id": "s0079", "group": "g0079", "text": "오늘 점심 뭐 먹지", "intent": "해당없음"}
+{"id": "s0080", "group": "g0080", "text": "ㅁㄴㅇㄹ ㅁㄴㅇㄹ", "intent": "해당없음"}
+{"id": "s0081", "group": "g0081", "text": "최신 스마트폰 특가 할인 이벤트 바로가기", "intent": "해당없음"}
+{"id": "s0082", "group": "g0082", "text": "내일 날씨 어때?", "intent": "해당없음"}
+{"id": "s0083", "group": "g0083", "text": "ㅋㅋㅋㅋㅋ", "intent": "해당없음"}
+{"id": "s0084", "group": "g0084", "text": "안녕하세요", "intent": "해당없음"}
+{"id": "s0085", "group": "g0085", "text": "우리 동네 맛집 추천해줘", "intent": "해당없음", "tags": ["경계"]}
+{"id": "s0086", "group": "g0086", "text": "대한민국의 수도는 어디인가요", "intent": "해당없음"}
+{"id": "s0087", "group": "g0087", "text": "주식 오늘 오를까요", "intent": "해당없음", "tags": ["경계"]}
+{"id": "s0088", "group": "g0088", "text": "저기요", "intent": "해당없음", "tags": ["경계"]}
+{"id": "s0089", "group": "g0089", "text": "고객님 대출 한도 조회 결과를 확인하세요 http://example.com", "intent": "해당없음"}
+{"id": "s0090", "group": "g0090", "text": "아 진짜 짜증나네", "intent": "해당없음", "tags": ["경계"]}

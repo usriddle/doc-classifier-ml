@@ -1,0 +1,31 @@
+# =============================================================================
+# requirements-model.txt - 분류 파이프라인 (③ 임베딩 / ④ 후보 추림 / ⑤ Qwen 판정)
+#
+# Colab T4 또는 GPU 리눅스 서버 전용입니다. 윈도우(PaddleOCR 환경)에는 설치하지 마세요.
+# 설치 순서·torch 제외 방법·bitsandbytes·transformers 최신판은 README.md 의 "1. 설치" 에 있습니다.
+# =============================================================================
+
+# --- ②→③ 키워드 3개 + 요약문 ----------------------------------------------
+kiwipiepy>=0.18.0                 # 한국어 형태소 분석 (문장 분리 + 명사구 후보 추출)
+keybert>=0.8.5                    # 키워드 3개 선정. 백본으로 bge-m3 를 재사용합니다
+scikit-learn>=1.3                 # keybert 내부 의존성 (명시적으로 고정)
+
+# --- ③ 임베딩 : bge-m3 -----------------------------------------------------
+# 5.4 부터 멀티모달 지원이 들어오면서 텍스트 전용 모델(bge-m3)에도 AutoProcessor 로딩을
+# 시도해 "Unrecognized processing class in BAAI/bge-m3" 오류가 납니다. 5.4 미만으로 고정합니다.
+sentence-transformers>=3.0,<5.4    # transformers / huggingface-hub 를 함께 끌고 옵니다
+
+# --- ⑤ 판정 모델 : Qwen3.5-4B (+ QLoRA 어댑터) -----------------------------
+# Qwen3.5 를 못 알아보면(KeyError: 'qwen3_5') README 의 transformers 최신판 설치를 보세요.
+transformers>=4.57
+accelerate>=0.30                  # device_map / 큰 모델 로딩
+peft>=0.11                        # QLoRA(LoRA) 어댑터 로드. 어댑터가 없어도 설치해 두세요
+sentencepiece>=0.2                # 일부 토크나이저가 요구합니다
+protobuf>=4.25
+
+# --- PyTorch ---------------------------------------------------------------
+# PyPI 기본 휠(CPU 판)입니다. Colab 은 이 줄을 빼고 설치하고,
+# GPU 서버는 README 의 CUDA 판 설치 명령을 쓰세요.
+torch>=2.2
+
+# bitsandbytes(4bit 양자화)는 CUDA 전용이라 여기 넣지 않습니다. README 를 보세요.

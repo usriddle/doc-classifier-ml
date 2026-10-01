@@ -1,0 +1,48 @@
+# === 보안: 절대 커밋 금지 ===
+.env
+.env.local
+.env.*.local
+*.key
+*.pem
+
+# === Python ===
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# === 런타임 산출물 ===
+tmp/
+logs/
+uploads/
+outputs/
+*.log
+
+# === 벡터DB 캐시 (data/cases.csv 로부터 기동 시 자동 생성) ===
+data/*.npy
+data/*.meta.json
+data/*.db
+data/*.db-journal
+data/*.db-wal
+data/*.db-shm
+
+# === 학습 산출물 (어댑터·체크포인트는 드라이브/HF Hub 에 보관) ===
+adapters/
+data/train/cache/
+
+# === OCR 모델 캐시 (홈 디렉터리에 받지만 혹시 프로젝트에 생길 경우 대비) ===
+.paddlex/
+paddlex/
+*.pdmodel
+*.pdiparams
+
+# === IDE / OS ===
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
