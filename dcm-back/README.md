@@ -260,10 +260,10 @@ LoRA 어댑터가 드라이브의 `backend/adapters/<이름>/` 에 저장됩니�
               │
            ③ 임베딩 bge-m3          문장 → 1024차원 벡터 (학습 없음)
               │
-           ④ 후보 추림               카테고리 7종과 코사인 유사도 → top-3
-              │   └ 벡터DB             라벨링된 사례로 top-3 재정렬 (data/cases.csv, CASE_MODE)
+           ④ 후보 추림               카테고리 7종과 코사인 유사도 → top-4
+              │   └ 벡터DB             라벨링된 사례로 top-4 재정렬 (data/cases.csv, CASE_MODE)
               │
-           ⑤ Qwen3.5-4B             의도 1개(+해당없음 게이트) / 후보 3개 중 카테고리 1개 / 도구 호출 JSON
+           ⑤ Qwen3.5-4B             의도 1개(+해당없음 게이트) / 후보 4개 중 카테고리 1개 / 도구 호출 JSON
               │
            ⑥ 민원 DB (SQLite)       도구 호출 실제 실행 - 규칙검사(소유권·상태) 통과 시 즉시 반영
               │
@@ -788,6 +788,8 @@ charset-normalizer 가 짧은 한글 바이트열을 big5 등으로 잘못 추�
 | GET | `/api/v1/analyze/categories` | 카테고리 7종 정의 |
 | GET | `/api/v1/analyze/status` | 모델 설치·로드 상태 |
 | GET | `/health` | 서버 상태 + OCR 설치 여부 + 사용 중인 모델 |
+| POST | `/api/v1/chat/message` | 대화 한 턴. 여러 건이면 되묻고, "두 번째 거요" 로 이어서 처리 (5.12) |
+| GET · DELETE | `/api/v1/chat/sessions/{id}` | 대화 세션 상태·기록 조회 / 삭제 (5.12) |
 
 `/analyze/file` 의 선택 입력칸 `text` 에 문장을 적으면 그림 ① 의 **이미지+텍스트** 입력이 됩니다.
 적은 문장이 문서에서 뽑은 텍스트 앞에 붙어 함께 분류됩니다.
@@ -820,8 +822,8 @@ charset-normalizer 가 짧은 한글 바이트열을 big5 등으로 잘못 추�
 |---|---|---|---|
 | ②→③ | 원문 → 키워드 3개 + 요약문 | kiwipiepy(형태소) + KeyBERT(bge-m3 재사용) + TextRank | 없음 |
 | ③ | 질의문 → 1024차원 벡터 | `BAAI/bge-m3` (sentence-transformers) | 없음 |
-| ④ | 카테고리 7종과 코사인 유사도 → top-3 | numpy | 없음 |
-| ④ 보조 | 라벨링된 사례로 top-3 재정렬 (`CASE_MODE`) | 벡터DB (numpy `.npy`) + bge-m3 | 없음 |
+| ④ | 카테고리 7종과 코사인 유사도 → top-4 | numpy | 없음 |
+| ④ 보조 | 라벨링된 사례로 top-4 재정렬 (`CASE_MODE`) | 벡터DB (numpy `.npy`) + bge-m3 | 없음 |
 | ⑤ | 의도 / 카테고리 / 도구 호출 JSON | `Qwen/Qwen3.5-4B` (+QLoRA 어댑터) | **유일한 파인튜닝 대상** |
 
 원문을 그대로 임베딩하면 문서가 길수록 주제가 희석되므로, ③ 앞에서 키워드 3개와 요약문으로
@@ -841,18 +843,20 @@ kiwipiepy / keybert 가 없으면 정규식·빈도 기반 폴백으로 내려�
 ```
 
 덕분에 (1) 형식이 깨질 수 없고 (2) 토큰 하나만 계산해 빠르며 (3) 확신 점수를 그대로 얻습니다.
-카테고리도 같은 방식으로 ④ 가 추린 **후보 3개 중에서만** 고릅니다. 의도에 따라 선택지가 다릅니다.
+카테고리도 같은 방식으로 ④ 가 추린 **후보 4개 중에서만** 고릅니다. 의도에 따라 선택지가 다릅니다.
+후보 수는 `.env` 의 `CANDIDATE_TOP_K` (기본 4, 예전 3)입니다. **바꾸면 선택지 번호가 달라지므로 어댑터를 다시 학습해야 합니다.**
+(프롬프트 지문에 후보 수가 들어가 있어, 다른 후보 수로 학습한 어댑터를 올리면 서버가 `prompt_fingerprint` 불일치 경고를 냅니다)
 
 | 의도 | 카테고리 판정 |
 |---|---|
-| 접수 | 후보 3개 중 하나 (없음 불가) |
-| 조회 · 수정 · 삭제 | 후보 3개 + **`4. 없음`** — "어제 넣은 거 취소해 줘"처럼 주제가 안 드러나면 없음 |
+| 접수 | 후보 4개 중 하나 (없음 불가) |
+| 조회 · 수정 · 삭제 | 후보 4개 + **`5. 없음`** — "어제 넣은 거 취소해 줘"처럼 주제가 안 드러나면 없음 |
 | 문의 · 해당없음 | 판정하지 않음 (카테고리를 쓰지 않음) |
 
 후보는 프롬프트에 `1. 국토교통` 처럼 번호와 이름만 적습니다. 각 카테고리의 설명은 이미 고정 프리픽스의
 [카테고리 정의] 에 있으므로 반복하지 않습니다.
 
-도구 호출 JSON 만 일반 생성이며, 의도가 `문의` 면 도구를 부르지 않고 안내 지식으로 즉답합니다.
+도구 호출 JSON 만 일반 생성이며, 의도가 `문의` 면 도구를 부르지 않고 FAQ 를 검색해 즉답합니다. (5.11)
 도구의 `category` 인자는 번호 토큰으로 확정한 카테고리로 항상 맞춰집니다. (없음이면 `""`)
 
 - 의도 5종(+해당없음) : `문의` `접수` `조회` `수정` `삭제` (+ `해당없음`) — 한 요청에 하나만 판정됩니다.
@@ -884,8 +888,8 @@ kiwipiepy / keybert 가 없으면 정규식·빈도 기반 폴백으로 내려�
   처리하는 동작 설명은 넣지 않습니다. 도구는 이름·용도·인자 이름만 한 줄씩 적고, 인자별 설명이 담긴
   전체 스키마(`TOOL_DEFINITIONS`)는 도구 호출 JSON 단계 프롬프트에 그 도구 하나만 넣습니다. (중복 제거)
   프리픽스가 짧을수록 서버 prefill 과 QLoRA 학습(샘플마다 프리픽스를 다시 계산)이 빨라집니다.
-- **안내 지식(`GUIDE_KNOWLEDGE`, 자주 묻는 질문 QnA)은 프리픽스에 없습니다.** 의도·카테고리·도구 판정에는
-  쓰이지 않으므로 '문의' 즉답 프롬프트(`build_answer_prompt`)에만 넣습니다. 문의 요청만 이 부분을 매번 계산합니다.
+- **안내 지식(FAQ)은 프리픽스에 없습니다.** 의도·카테고리·도구 판정에는 쓰이지 않으므로 '문의' 즉답 프롬프트
+  (`build_answer_prompt`)에만, 그것도 질문과 비슷한 FAQ 몇 개만 넣습니다. (5.11 FAQ 검색) 문의 요청만 이 부분을 매번 계산합니다.
 - 프리픽스는 요청마다 토큰이 한 글자도 달라지면 안 되므로 날짜·사용자 정보 같은 동적인 값은 넣지 마세요.
 - **prefill 시점** — `PRELOAD_MODELS=true` 면 기동할 때, 아니면 첫 분류 요청 때 한 번 합니다.
   프리픽스(카테고리·도구·의도 정의)를 고쳤다면 서버를 재시작해야 새 캐시가 만들어집니다.
@@ -913,14 +917,14 @@ kiwipiepy / keybert 가 없으면 정규식·빈도 기반 폴백으로 내려�
 저장 방식은 `CASE_STORE_BACKEND` 로 고릅니다 — `numpy`(기본, Colab 테스트용) 또는 `pgvector`(PostgreSQL, 1-6 참고).
 두 방식의 검색 결과는 같고, 아래 동작도 같습니다.
 
-사용자와 무관한 **분류 보조 전용**이며, 비슷한 과거 사례의 카테고리 라벨로 top-3 후보를 다시 정렬한 뒤
+사용자와 무관한 **분류 보조 전용**이며, 비슷한 과거 사례의 카테고리 라벨로 top-4 후보를 다시 정렬한 뒤
 ⑤ 에 넘깁니다. 언제·어떻게 쓸지는 `CASE_MODE` 로 고릅니다.
 
 | `CASE_MODE` | 동작 |
 |---|---|
 | `low_confidence` (기본) | ④ 1위 유사도가 `CANDIDATE_MIN_SCORE`(기본 0.65) 미만일 때만 섞기 |
 | `always` | 매번 섞기 |
-| `union` | 매번 섞고, **사례 점수 1위 카테고리가 top-3 밖이면 3위 자리에 넣기** (④ 와 사례 중 하나만 맞아도 정답이 후보에 들어감) |
+| `union` | 매번 섞고, **사례 점수 1위 카테고리가 top-4 밖이면 4위 자리에 넣기** (④ 와 사례 중 하나만 맞아도 정답이 후보에 들어감) |
 
 ④ 가 '확신한 채로 틀리면'(1위 점수가 높은데 오답) `low_confidence` 는 벡터DB 를 열지 않아 사례가 도움이
 되지 못합니다. 어느 방식이 나은지는 학습 노트북 **6-1 측정 셀**로 records 에서 직접 비교해 고르세요.
@@ -933,7 +937,7 @@ kiwipiepy / keybert 가 없으면 정규식·빈도 기반 폴백으로 내려�
 ```
 사례 점수(c) = CASE_MIN_SCORE 이상인 유사 사례(최대 CASE_TOP_K개) 중 라벨이 c 인 것들의 유사도 합 / CASE_TOP_K
 최종 점수(c) = (1 - CASE_BLEND_WEIGHT) × ④ 점수(c) + CASE_BLEND_WEIGHT × 사례 점수(c)
-union 이면 : 최종 점수로 정렬한 뒤 사례 점수 1위 카테고리가 top-3 밖이면 3위 자리에 넣음
+union 이면 : 최종 점수로 정렬한 뒤 사례 점수 1위 카테고리가 top-4 밖이면 4위 자리에 넣음
 ```
 
 | 파일 | 내용 |
@@ -1006,7 +1010,7 @@ PC(추출) 양쪽 다인데, Colab 은 PC 의 PostgreSQL 에 네트워크로 닿
 | 인자 | 채우는 쪽 | 내용 |
 |---|---|---|
 | `complaint_id` | Qwen | 번호를 말했을 때만. 있으면 다른 조건보다 우선 |
-| `category` | 코드 | ⑤ 가 확정한 카테고리. 조회·수정·삭제는 후보 3개 + **없음** 중에서 고르며, 주제가 안 드러나면 없음(`""`) |
+| `category` | 코드 | ⑤ 가 확정한 카테고리. 조회·수정·삭제는 후보 4개 + **없음** 중에서 고르며, 주제가 안 드러나면 없음(`""`) |
 | `keyword` | Qwen | 대상 표현을 원문 그대로 (예: `가로등`). 내용·위치에 글자로 있으면 일치, 없으면 bge-m3 의미 유사도 ≥ `SEARCH_SEMANTIC_MIN_SCORE` |
 | `period` | Qwen | 시점 표현을 원문 그대로 (예: `어제`, `지난주`, `방금`). 날짜 계산은 `app/services/period.py` 가 `TIMEZONE` 기준으로 함 |
 
@@ -1058,8 +1062,8 @@ Colab 노트북 6-A 의 "⑥ 민원 DB 실제 동작 확인" 셀에서 접수 �
 | `TIMEZONE` | `Asia/Seoul` | 시점 표현("어제")을 날짜로 바꿀 기준 시간대 |
 | `SEARCH_SEMANTIC_MIN_SCORE` | `0.55` | keyword 가 글자 그대로 없을 때 같은 민원으로 볼 의미 유사도 |
 
-**알려진 한계** — 대화 상태(세션)가 없어, 후보 목록에서 고른 민원을 서버가 기억하지 못합니다.
-`needs_selection=true` 를 받은 화면은 사용자가 고른 민원의 번호를 넣어 다시 요청해야 합니다.
+**대화로 이어가기** — `/analyze/*` 는 요청 하나로 끝나 후보를 기억하지 못합니다. 고른 민원을 서버가 기억하게 하려면
+`POST /api/v1/chat/message` 를 쓰세요. "두 번째 거요" 처럼 답하면 원래 요청을 그 민원에 실행합니다. (5.12)
 
 ### 5.6 모델 로드
 
@@ -1082,7 +1086,7 @@ Colab 노트북 6-A 의 "⑥ 민원 DB 실제 동작 확인" 셀에서 접수 �
 학습(실시간 loss 그래프·중간 출력) → 학습 후 평가·전후 비교·판정 → 저장 → 운영 경로로 재확인)
 
 6-1 · 6-2 셀은 학습 전에 ④ 설정(`CANDIDATE_SCORING`, `CASE_MODE`, `CANDIDATE_MIN_SCORE`, `CASE_BLEND_WEIGHT`)을
-records 로 비교해 고르고 `.env` 에 반영합니다. ④ 가 정답을 후보 3개에 못 올리면 ⑤ 를 학습해도 맞힐 수 없으므로,
+records 로 비교해 고르고 `.env` 에 반영합니다. ④ 가 정답을 후보 4개에 못 올리면 ⑤ 를 학습해도 맞힐 수 없으므로,
 `④ 놓침` 이 많으면 학습보다 먼저 여기서 줄이세요. (`training/calibrate.py`)
 
 **무엇을 학습하나** — 어댑터 하나에 도구 호출 JSON 의 인자 추출(content / location / complaint_id / keyword / period / field /
@@ -1097,7 +1101,7 @@ reason)을 주력으로, 의도·카테고리 판정을 소량(기본 각 15%) �
 | 단계별 프롬프트 | `prompts.build_intent_prompt` / `build_category_prompt` / `build_tool_prompt` |
 | 번호 정답 토큰, 어시스턴트 앞머리 | `llm_engine.number_token_ids`, `INTENT_ASSISTANT_PREFIX` / `CATEGORY_ASSISTANT_PREFIX` |
 | 도구 JSON 정답 형식 | `prompts.format_tool_call` (한 줄, 키 순서 고정) |
-| ④ 후보 3개 | `pipeline.run_candidates` (벡터DB 재정렬 포함) |
+| ④ 후보 4개 | `pipeline.run_candidates` (벡터DB 재정렬 포함) |
 | 베이스 모델 로드 | `llm_engine.load_base_model()` (서버와 같은 4bit 설정) |
 
 평가도 `llm_engine.judge_intent` / `judge_category` / `generate_tool_call` 을 그대로 부르므로 노트북 점수가 곧 서버 동작입니다.
@@ -1126,9 +1130,9 @@ LLM_ADAPTER_PATH=adapters/v1_0929     # 비우면 베이스 모델 (되돌리기
 | `keywords`, `summary` | ②→③ 키워드 3개 + 요약문 |
 | `embed_query_text` | ③ 임베딩 모델에 실제로 넘긴 질의문 |
 | `embedding_dim`, `embedding_preview` | ③ 벡터 차원과 앞부분 미리보기 |
-| `candidates_top`, `candidates_all` | ⑤ 에 넘긴 상위 3개와 7종 전체 점수 (벡터DB 로 재정렬했으면 재정렬 후 점수) |
+| `candidates_top`, `candidates_all` | ⑤ 에 넘긴 상위 4개와 7종 전체 점수 (벡터DB 로 재정렬했으면 재정렬 후 점수) |
 | `low_confidence` | ④ 1위 유사도가 `CANDIDATE_MIN_SCORE` 미만인지 (`CASE_MODE=low_confidence` 면 true 일 때 벡터DB 조회) |
-| `case_lookup` | 벡터DB 조회 결과 — 유사 사례, 카테고리별 사례 점수, 재정렬 전후 top-3 (조회했을 때만) |
+| `case_lookup` | 벡터DB 조회 결과 — 유사 사례, 카테고리별 사례 점수, 재정렬 전후 top-4 (조회했을 때만) |
 | `intent_choice`, `category_choice` | ⑤ 후보별 확신 점수 전체 |
 | `llm_raw_output` | ⑤ 모델 원시 출력 |
 | `timings_ms` | 단계별 소요 시간 |
@@ -1148,7 +1152,7 @@ Swagger 에서 눈으로 볼 때는 **`debug.debug_text` 하나만 펼쳐 보면
 여섯 번째 선택지입니다. Qwen 이 이 번호를 고르면 카테고리 확정과 도구 호출을 생략하고 곧바로 반려합니다.
 의도 판정(forward 1회)만 쓰고 멈추므로, 반려되는 요청이 오히려 더 빠릅니다.
 
-**게이트는 카테고리(④)와 무관합니다.** ④ 의 코사인 유사도는 후보 3개를 좁히고 벡터DB 를 열지 정하는 데만 쓰입니다.
+**게이트는 카테고리(④)와 무관합니다.** ④ 의 코사인 유사도는 후보 4개를 좁히고 벡터DB 를 열지 정하는 데만 쓰입니다.
 
 - `"제가 어제 문의한 내용 보여줘"` — 7종 어디와도 뚜렷이 겹치지 않지만, 의도(조회)가 명확하므로 **정상 통과**합니다.
 - `"오늘 점심 뭐 먹지 ㅋㅋ"` — 5가지 의도 중 어디에도 해당하지 않으므로 **반려**됩니다.
@@ -1184,8 +1188,117 @@ Swagger 에서 눈으로 볼 때는 **`debug.debug_text` 하나만 펼쳐 보면
 | 그림의 요소 | 상태 |
 |---|---|
 | ⑥ 민원 DB 의 실제 인증 | `user_id` 를 API 호출자가 그대로 넘겨줘야 합니다. 로그인 세션에서 자동으로 채워주는 계층은 아직 없습니다. |
-| ⑥ 수정/삭제의 대상 지정 | 번호·주제·시점으로 찾고, 여러 건이면 후보를 돌려줍니다. 화면에서 고른 id 를 서버가 기억하는 대화 상태(세션)는 아직 없어 번호를 넣어 다시 요청해야 합니다. |
+| ⑥ 수정/삭제의 대상 지정 | `/analyze/*` 는 여러 건이면 후보만 돌려줍니다. `/chat/message` 는 세션에 후보를 기억해 "두 번째 거요" 로 이어서 실행합니다. (5.12) 다만 이어 주는 상황은 '여러 건 중 고르기' 하나뿐이고, 그 밖의 대화 맥락(앞 문장 참조 등)은 아직 없습니다. |
+| 대화 화면 | API 와 `front_stub/` (JS 클라이언트·데모)만 있습니다. 실제 프론트 연결은 `front_stub/README.md` 의 TODO 참고 |
 | ⑦ 사용자 응답 | ⑤⑥ 결과를 `result_text` 텍스트로 대신합니다. 사용자에게 보여줄 문구를 다듬는 별도 단계는 없습니다. |
+
+### 5.11 문의 답변 — FAQ 검색 (RAG)
+
+의도가 `문의` 면 FAQ 를 **전부 넣지 않고**, 질문과 비슷한 FAQ 몇 개만 골라 답변 프롬프트에 넣습니다.
+FAQ 가 수백 개로 늘어도 프롬프트 길이·속도는 그대로이고, 비슷한 FAQ 가 없으면 Qwen 을 부르지 않아
+**지어낸 답이 나갈 수 없습니다.** (`app/services/faq_store.py`, `llm_engine.answer_inquiry`)
+
+```
+'문의' 판정
+   → 질문 원문을 bge-m3 로 임베딩 (③ 과 같은 인스턴스)
+   → FAQ 의 question·variants 벡터와 코사인 유사도 → FAQ 별 최고 점수 → 상위 FAQ_TOP_K 개
+   ├─ FAQ_MIN_SCORE 이상인 FAQ 가 있음 → 그 FAQ 만 넣고 Qwen 이 2문장 이내로 답변
+   │     └ Qwen 이 '확인이 어렵다'고 답하면 → FAQ_FALLBACK_MESSAGE 로 바꿈
+   └─ 하나도 없음 → Qwen 호출 없이 FAQ_FALLBACK_MESSAGE
+```
+
+**FAQ 파일** — `data/faq.csv` (사람이 편집). 기동 시 같은 폴더에 `faq.npy` / `faq.meta.json` 이 자동 생성되고,
+CSV·임베딩 설정이 그대로면 다음 기동부터는 `.npy` 만 읽습니다.
+
+| 컬럼 | 필수 | 내용 |
+|---|---|---|
+| `id` | | 로그·디버그에서 어느 FAQ 가 쓰였는지 추적 (비우면 `faq_line<행번호>`) |
+| `question` | ✅ | 대표 질문 (검색 대상) |
+| `variants` | | 같은 질문의 다른 표현을 `\|` 로 구분. 시민마다 말이 달라서 넉넉할수록 잘 걸립니다 |
+| `answer` | ✅ | 답변 근거. **실제 출처(누리집 FAQ, 민원편람 등)에서 옮기세요.** 1~3문장 권장 |
+| `category` | | 7종 중 하나 또는 비움(공통). 지금은 기록용 |
+| `source`, `updated_at` | | 출처와 갱신일 |
+
+동봉된 `faq.csv` 는 예전 `GUIDE_KNOWLEDGE` 6개를 옮긴 것입니다. 학습 데이터의 문의 문장(321건)이
+실제로 들어올 질문의 좋은 목록이므로, 주제별로 묶어 FAQ 를 늘려 가세요.
+
+| 설정 | 기본값 | 의미 |
+|---|---|---|
+| `FAQ_ENABLED` | `true` | `false` 면 검색 없이 FAQ 전부를 넣음 (예전 방식, 비교용) |
+| `FAQ_CSV_PATH` | `./data/faq.csv` | FAQ CSV 경로 |
+| `FAQ_TOP_K` | `3` | 프롬프트에 넣을 최대 FAQ 수 |
+| `FAQ_MIN_SCORE` | `0.6` | 이보다 덜 비슷한 FAQ 는 넣지 않음. **시작값** — 아래처럼 측정해 조정 |
+| `FAQ_QUERY_MAX_CHARS` | `300` | 검색에 쓸 질문 길이 상한 |
+| `FAQ_FALLBACK_MESSAGE` | (안내 문구) | 비슷한 FAQ 가 없거나 Qwen 이 답할 수 없다고 할 때의 답 |
+
+**`FAQ_MIN_SCORE` 정하기** — 문의 질문마다 "정답 FAQ id" 또는 "없음" 을 적은 목록을 만들고, 값을 0.4~0.8 로 바꿔 가며
+① 정답이 있는 질문에서 정답 FAQ 가 선택되는 비율, ② "없음" 질문이 고정 문구로 가는 비율을 보세요.
+`faq_store.lookup(질문)` 의 `hits` 에 상위 FAQ 와 점수가 모두 있습니다.
+
+**학습과의 관계** — 문의 답변은 학습 대상이 아니므로 **FAQ 를 고쳐도 재학습이 필요 없습니다.**
+프롬프트 지문(`prompt_fingerprint`)은 예전 답변 프롬프트 틀을 고정값으로 넣어 계산하므로 FAQ·답변 프롬프트를 바꿔도
+값이 그대로입니다. 기존 어댑터의 `run_info.json` 과 학습 노트북 8단계의 기준선 캐시가 계속 유효합니다.
+
+**확인** — `DEBUG=true` 면 `debug.faq_lookup`(상위 FAQ·점수·선택 여부·Qwen 원시 출력)과 `debug_text` 의
+"문의 답변 : FAQ 검색" 구간에서 봅니다. 준비 상태는 `GET /api/v1/analyze/status` 의 `faq_store`.
+
+### 5.12 대화 이어가기 — "어느 민원인가요?" → "두 번째 거요" (Qwen-Agent)
+
+수정·취소 대상이 여러 건이면 서버가 후보에 번호를 붙여 되묻고, **대화 세션**에 그 상태를 기억합니다.
+사용자의 다음 말은 **Qwen-Agent**(함수 호출 에이전트)가 해석해, 처음 요청을 고른 민원에 실행합니다.
+
+```
+사용자  가로등 민원 취소해 주세요          → ②~⑥ 파이프라인 → 3건이라 실행 안 함 (needs_selection)
+서버    취소할 민원이 3건 있습니다. 어느 민원인가요?  1. 37번 …  2. 41번 …  3. 45번 …   [대기 상태 저장]
+사용자  두 번째 거요                         → Qwen-Agent: select_complaint(position=2)
+서버    취소 완료 - 41번 민원 …              → 처음 요청의 인자(취소 사유 등) + complaint_id=41 로 tool_executor 실행
+```
+
+**에이전트 구성** (`app/services/qwen_agent_backend.py`)
+
+| 구성 | 내용 |
+|---|---|
+| LLM | Qwen-Agent 의 `BaseFnCallModel` 을 상속한 `SharedQwenLLM`. **이미 올라와 있는 Qwen(4bit + 어댑터)을 그대로 씀** — Qwen-Agent 기본 `transformers` 타입은 모델을 한 벌 더 올려 GPU 메모리가 두 배가 되므로 쓰지 않음. 사고 모드는 끄고 렌더링 |
+| 도구 | `select_complaint(position \| complaint_id)` · `cancel_selection()` · `start_new_request()` |
+| 에이전트 | Qwen-Agent `Agent` 를 상속해 **LLM 1회 + 도구 1회** 로 끝냄. 사용자에게 보낼 문장은 LLM 이 아니라 서버 코드(tool_executor 결과)가 만듦 |
+| 형식 | Qwen-Agent 'nous' 함수 호출 프롬프트(`<tool_call>{json}</tool_call>`). Qwen3.5 가 자기 형식(`<function=…><parameter=…>`)으로 답해도 변환해서 처리 |
+| 검증 | 에이전트가 고른 번호가 후보 목록에 있는지 서버가 다시 확인. 실제 DB 변경은 tool_executor 의 소유권·상태 검사를 그대로 거침 |
+
+**해석 결과별 처리** (`app/services/chat.py`)
+
+| 결과 | 처리 |
+|---|---|
+| 고름 (말 / 화면 버튼) | 처음 요청을 그 민원에 실행, 대기 해제. 버튼(`selected_complaint_id`)은 에이전트를 거치지 않음 |
+| 그만둠 ("아니요", "그냥 둘게요") | 대기 해제, "취소하지 않았습니다" |
+| 새 요청 ("그거 말고 도로 파인 거 접수할게요") | 대기 해제 후 이번 말을 파이프라인으로 처리 |
+| 못 알아들음 | 다시 물음. `CHAT_MAX_SELECTION_ATTEMPTS` 번 넘으면 대기 해제 |
+| 대기가 `CHAT_PENDING_TTL_MINUTES` 분을 넘음 | 대기를 버리고 이번 말을 새 요청으로 처리 |
+
+**Qwen-Agent 가 없을 때** — `qwen-agent` 가 설치되지 않았거나 `CHAT_AGENT_ENABLED=false`, 또는 에이전트 호출이 실패하면
+규칙으로 해석합니다. ("N번째", "첫째", "마지막", "N번 민원", 숫자만, 거절 표현) 내용으로 가리키는 말("가로등 거")은 규칙으로는 못 알아듣습니다.
+상태는 `GET /api/v1/chat/status` 의 `agent_available`, `agent_error` 에서 봅니다.
+
+**세션** — `data/chat_sessions.db`(SQLite)에 세션·대기 상태·대화 기록을 저장합니다. 세션은 `user_id` 에 묶여
+다른 사용자의 `session_id` 로는 접근할 수 없습니다(403). 아직 실제 로그인이 없어 `user_id` 는 요청 본문 값을 그대로 믿습니다.
+
+| 설정 | 기본값 | 의미 |
+|---|---|---|
+| `CHAT_AGENT_ENABLED` | `true` | `false` 면 규칙으로만 해석 |
+| `CHAT_DB_PATH` | `./data/chat_sessions.db` | 대화 세션 SQLite 파일 |
+| `CHAT_PENDING_TTL_MINUTES` | `30` | 되물은 뒤 이 시간이 지나면 대기를 버림 |
+| `CHAT_MAX_SELECTION_ATTEMPTS` | `3` | 이만큼 다시 물어도 못 고르면 종료 |
+| `CHAT_MAX_CHOICES` | `10` | 보여 줄(에이전트에게 줄) 최대 후보 수. 그 밖의 후보는 민원 번호로 고를 수 있음 |
+| `CHAT_HISTORY_MESSAGES` | `6` | 에이전트에게 줄 최근 대화 수 |
+| `CHAT_AGENT_MAX_NEW_TOKENS` | `160` | 에이전트 한 번의 생성 길이 |
+| `CHAT_AGENT_DISABLE_ADAPTER` | `false` | `true` 면 에이전트 판단 때만 QLoRA 어댑터를 끔. 모델 전체에 적용되므로 동시 요청이 있는 운영 서버에서는 `false` |
+| `CHAT_DEMO_ENABLED` | `true` | `http://서버/chat-demo/demo.html` 데모 화면. 운영에서는 `false` |
+| `CORS_ALLOW_ORIGINS` | (비어 있음) | 프론트를 다른 주소에서 띄울 때 허용할 출처 (쉼표 구분) |
+
+**프론트 연결** — `front_stub/README.md` 에 요청·응답 형식과 화면에서 할 일(말풍선, 후보 버튼, 세션 저장)을 정리해 두었습니다.
+`front_stub/chatClient.js` 는 서버와 주고받는 부분만 담은 JS 클래스입니다.
+
+**확인** — Colab 서버 노트북 6-A 의 "대화 이어가기 확인" 셀, 또는 서버를 띄운 뒤 `/chat-demo/demo.html`.
+실제 Qwen3.5 가 도구를 잘 고르는지(특히 "가로등 거"처럼 내용으로 가리키는 말)는 여기서 몇 문장 넣어 보며 확인하세요.
 
 ## 6. 오류 응답
 
@@ -1210,7 +1323,9 @@ Swagger 에서 눈으로 볼 때는 **`debug.debug_text` 하나만 펼쳐 보면
 | 422 | `NO_TEXT` | 추출된 텍스트가 비어 분류할 수 없음 (`/analyze/*`) |
 | 422 | `VALIDATION_ERROR` | 요청 형식 오류 |
 | 503 | `OCR_UNAVAILABLE` | PP-OCRv5 미설치 (이미지 파일 요청 시) |
-| 503 | `MODEL_UNAVAILABLE` | bge-m3 / Qwen 미설치·로드 실패 (`/analyze/*`) |
+| 503 | `MODEL_UNAVAILABLE` | bge-m3 / Qwen 미설치·로드 실패 (`/analyze/*`, `/chat/message`) |
+| 404 | `SESSION_NOT_FOUND` | 대화 세션이 없음 (`session_id` 를 비우고 보내면 새로 만듦) |
+| 403 | `SESSION_FORBIDDEN` | 다른 사용자의 대화 세션 |
 | 500 | `INTERNAL_ERROR` | 처리되지 않은 예외 (`DEBUG=true` 면 `detail` 에 원인) |
 
 ## 7. 성능 참고
@@ -1230,8 +1345,10 @@ backend/
 ├── requirements-model.txt    # ③④⑤ 모델 스택 (Colab / GPU 서버 전용)
 ├── colab_backend.ipynb       # Colab T4 실행 노트북 (서버·파이프라인 확인)
 ├── colab_train.ipynb         # Colab T4 QLoRA 학습 노트북 (5.7)
+├── front_stub/               # 프론트 연결용 틀 (chatClient.js, demo.html, 연결 안내 README) - 5.12
 ├── data/
 │   ├── cases.csv             # 벡터DB 원본 (라벨링된 사례). .npy/.meta.json 은 기동 시 자동 생성
+│   ├── faq.csv               # '문의' 답변용 FAQ (5.11). .npy/.meta.json 은 기동 시 자동 생성
 │   └── train/
 │       ├── records.jsonl     # 학습 정답 데이터 (직접 관리, 없으면 노트북이 예시를 복사)
 │       └── cache/            # ④ 후보·기준선 평가 캐시 (지워도 다시 생성)
@@ -1257,7 +1374,8 @@ backend/
     ├── logging_config.py     # 콘솔 + 일자별 파일 로깅
     ├── routers/
     │   ├── extract.py        # POST /extract/text, GET /formats
-    │   └── analyze.py        # POST /analyze/text·file, GET /analyze/categories·status
+    │   ├── analyze.py        # POST /analyze/text·file, GET /analyze/categories·status
+    │   └── chat.py           # POST /chat/message, GET·DELETE /chat/sessions/{id} (대화 이어가기)
     └── services/
         ├── base.py           # Segment / ExtractedText 공통 자료구조
         ├── file_types.py     # 확장자 판별 및 담당 모듈 결정
@@ -1269,13 +1387,18 @@ backend/
         ├── keyphrase.py      # ②→③ 키워드 3개 + 요약문
         ├── embedder.py       # ③ bge-m3
         ├── categories.py     # 카테고리 7종 정의
-        ├── candidates.py     # ④ 코사인 유사도 top-3
+        ├── candidates.py     # ④ 코사인 유사도 top-4
         ├── case_store.py     # ④ 보조 벡터DB (라벨링된 사례로 후보 재정렬, numpy/pgvector 선택)
+        ├── faq_store.py      # '문의' 답변용 FAQ 검색 (질문과 비슷한 FAQ 만 프롬프트에, 없으면 고정 문구)
         ├── pg_store.py       # 벡터DB 의 PostgreSQL + pgvector 저장소
         ├── prompts.py        # ⑤ 고정 프리픽스(CAG 대상) + 단계별 프롬프트
         ├── llm_engine.py     # ⑤ Qwen 로드 / KV 캐시 재사용 / 번호 토큰 판정 / 도구 JSON
         ├── complaint_store.py# ⑥ 민원 DB (SQLite - 접수/조회/수정/취소)
         ├── tool_executor.py  # ⑤ 의 도구 호출 JSON을 ⑥ 에서 실제로 검증·실행 (번호 없이 민원 찾기 포함)
+        ├── chat.py           # 대화 한 턴 처리 (되묻기 → 대기 저장 → 답 해석 → 원래 요청 실행)
+        ├── chat_agent.py     # "두 번째 거요" 해석 - Qwen-Agent 우선, 안 되면 규칙
+        ├── qwen_agent_backend.py # Qwen-Agent 연결 (이미 올린 Qwen 공유, 도구 3개, 1회 실행 에이전트)
+        ├── session_store.py  # 대화 세션·대기 중인 선택·대화 기록 (SQLite)
         ├── period.py         # 시점 표현("어제", "지난주") -> 날짜 범위
         ├── runtime.py        # 디바이스·4bit·dtype 판단
         └── pipeline.py       # ②~⑥ 오케스트레이션 + 게이트 + 텍스트 리포트

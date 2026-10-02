@@ -8,9 +8,9 @@ KV 캐시(CAG) 대상인 고정 프리픽스
   - 의도 정의 (5종 + 해당없음)
 를 build_fixed_prefix() 하나로 모아두었습니다.
 
-안내 지식(GUIDE_KNOWLEDGE, 자주 묻는 질문 QnA)은 프리픽스에 넣지 않고 '문의' 즉답 프롬프트
-(build_answer_prompt)에만 넣습니다. 의도·카테고리·도구 판정에는 쓰이지 않으므로, 프리픽스에 두면
-모든 요청과 모든 학습 샘플이 길어지기만 합니다.
+안내 지식(FAQ)은 프리픽스에 넣지 않고 '문의' 즉답 프롬프트(build_answer_prompt)에만 넣습니다.
+의도·카테고리·도구 판정에는 쓰이지 않으므로, 프리픽스에 두면 모든 요청과 모든 학습 샘플이 길어지기만 합니다.
+FAQ 원본은 data/faq.csv 이고, faq_store 가 질문과 비슷한 것만 골라 build_answer_prompt 에 넘깁니다. (RAG)
 
 프리픽스에는 모델의 판단에 필요한 내용만 둡니다. INSERT/UPDATE, 소유권 검사처럼 서버 코드가
 처리하는 동작 설명은 넣지 않습니다. 프리픽스는 요청마다 토큰이 한 글자도 달라지면 안 되므로 날짜·사용자 정보 같은
@@ -27,6 +27,7 @@ import hashlib
 import json
 from dataclasses import dataclass
 
+from app.config import settings
 from app.services import categories
 
 
@@ -152,12 +153,16 @@ TOOL_BY_NAME: dict[str, dict] = {t["name"]: t for t in TOOL_DEFINITIONS}
 
 
 # =============================================================================
-# 안내 지식 (자주 묻는 질문) - '문의' 의도의 답변 근거
-# 고정 프리픽스에는 넣지 않고 build_answer_prompt 에만 넣습니다. ('문의' 요청 때만 계산됨)
-# 여기를 고쳐도 프롬프트 지문(prompt_fingerprint)은 바뀌지만, 판정용 프리픽스·KV 캐시에는
-# 영향이 없습니다.
+# 안내 지식 (FAQ) - '문의' 의도의 답변 근거
+# 이제 FAQ 는 data/faq.csv 에서 관리하고, faq_store 가 질문과 비슷한 것만 골라 넣습니다.
+#
+# 아래 _LEGACY_GUIDE_KNOWLEDGE 는 답변에 쓰이지 않습니다. 프롬프트 지문(prompt_fingerprint)을
+# FAQ 를 CSV 로 옮기기 전과 같게 유지하려고 남겨 둔 고정 문자열입니다.
+#   - '문의' 답변은 학습 대상이 아니므로, FAQ 를 바꿔도 어댑터를 다시 학습할 필요가 없습니다.
+#   - 지문이 그대로라 기존 어댑터의 run_info.json 과 학습 노트북의 기준선 캐시가 계속 유효합니다.
+# 이 문자열은 고치지 마세요. (고치면 지문이 바뀌어 기존 어댑터에 경고가 납니다)
 # =============================================================================
-GUIDE_KNOWLEDGE = """[안내 지식 - 자주 묻는 질문]
+_LEGACY_GUIDE_KNOWLEDGE = """[안내 지식 - 자주 묻는 질문]
 Q. 민원 처리 기간은 얼마나 걸리나요?
 A. 일반 민원은 접수 후 7일 이내 처리하며, 현장 확인이 필요한 경우 최대 14일이 걸립니다.
 
@@ -249,7 +254,7 @@ def category_labels(candidate_names: list[str], allow_none: bool = False) -> lis
 
 def build_category_prompt(user_text: str, candidate_names: list[str], allow_none: bool = False) -> str:
     """
-    카테고리 확정 - ④ 가 추린 후보 3개 중에서만 고릅니다.
+    카테고리 확정 - ④ 가 추린 후보(CANDIDATE_TOP_K 개, 기본 4) 중에서만 고릅니다.
 
     후보는 번호와 이름만 적습니다. 각 카테고리의 설명은 이미 고정 프리픽스의
     [카테고리 정의] 에 있으므로 여기서 반복하지 않습니다. (캐시 밖 토큰을 줄임)
@@ -288,11 +293,32 @@ def build_tool_prompt(user_text: str, intent: Intent, category_name: str) -> str
     )
 
 
-def build_answer_prompt(user_text: str) -> str:
-    """'문의' 의도 - 도구를 부르지 않고 안내 지식만으로 답합니다. (안내 지식은 여기에만 들어감)"""
+# Qwen 이 이 문구로 답하면 llm_engine 이 FAQ_FALLBACK_MESSAGE 로 바꿉니다.
+ANSWER_DECLINE_PHRASE = "확인이 어렵다"
+
+
+def build_answer_prompt(user_text: str, faqs: list[tuple[str, str]]) -> str:
+    """
+    '문의' 의도 - 도구를 부르지 않고 안내 지식만으로 답합니다.
+
+    faqs : faq_store.lookup() 이 고른 (질문, 답변) 목록. 질문과 비슷한 것만 들어옵니다.
+           (FAQ_ENABLED=false 면 CSV 의 FAQ 전부)
+    """
+    blocks = [f"Q. {q}\nA. {a}" for q, a in faqs]
+    knowledge = "[안내 지식 - 관련 FAQ]\n" + "\n\n".join(blocks)
     return (
-        f"{GUIDE_KNOWLEDGE}\n\n"
+        f"{knowledge}\n\n"
         f"[민원 문장]\n{user_text}\n\n"
+        "위 질문에 [안내 지식]만 사용해 2문장 이내로 답하시오. "
+        f"안내 지식으로 답할 수 없는 질문이면 '{ANSWER_DECLINE_PHRASE}'고만 답하시오."
+    )
+
+
+def _legacy_answer_prompt_template() -> str:
+    """FAQ 를 CSV 로 옮기기 전의 '문의' 프롬프트 틀. 프롬프트 지문 계산에만 씁니다. (위 _LEGACY_GUIDE_KNOWLEDGE 설명 참고)"""
+    return (
+        f"{_LEGACY_GUIDE_KNOWLEDGE}\n\n"
+        "[민원 문장]\n{TEXT}\n\n"
         "위 질문에 [안내 지식]만 사용해 2문장 이내로 답하시오. "
         "안내 지식에 없는 내용은 '확인이 어렵다'고 답하시오."
     )
@@ -331,16 +357,21 @@ def prompt_fingerprint() -> str:
     고정 프리픽스와 단계별 프롬프트 틀이 한 글자라도 바뀌면 값이 달라집니다.
     어댑터를 학습할 때 이 값을 run_info.json 에 남겨 두고, 서버가 어댑터를 올릴 때
     지금 값과 비교해 "학습 때와 프롬프트가 다르다"는 경고를 냅니다.
+
+    '문의' 답변 프롬프트는 학습 대상이 아니므로 고정된 예전 틀을 넣습니다.
+    FAQ(data/faq.csv)나 build_answer_prompt 를 고쳐도 지문은 바뀌지 않습니다.
     """
+    # 카테고리 후보 수(CANDIDATE_TOP_K)가 바뀌면 선택지 번호가 달라지므로 지문도 바뀌어야 합니다.
+    k = max(1, min(settings.CANDIDATE_TOP_K, len(categories.NAMES)))
     parts = [
         build_fixed_prefix(),
         build_intent_prompt("{TEXT}"),
-        build_category_prompt("{TEXT}", list(categories.NAMES[:3])),
-        build_category_prompt("{TEXT}", list(categories.NAMES[:3]), allow_none=True),
+        build_category_prompt("{TEXT}", list(categories.NAMES[:k])),
+        build_category_prompt("{TEXT}", list(categories.NAMES[:k]), allow_none=True),
     ]
     for intent in VALID_INTENTS:
         if intent.tool:
             parts.append(build_tool_prompt("{TEXT}", intent, "{CATEGORY}"))
-    parts.append(build_answer_prompt("{TEXT}"))
+    parts.append(_legacy_answer_prompt_template())
     digest = hashlib.sha256("\n\u241e\n".join(parts).encode("utf-8")).hexdigest()
     return digest[:16]

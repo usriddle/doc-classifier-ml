@@ -60,3 +60,17 @@ class NoTextError(AppError):
 
     status_code = 422
     error_code = "NO_TEXT"
+
+
+class SessionNotFoundError(AppError):
+    """대화 세션이 없거나 만료되어 지워졌습니다. (POST /chat/message 는 session_id 를 비우면 새로 만듭니다)"""
+
+    status_code = 404
+    error_code = "SESSION_NOT_FOUND"
+
+
+class SessionForbiddenError(AppError):
+    """다른 사용자의 대화 세션에 접근하려 했습니다."""
+
+    status_code = 403
+    error_code = "SESSION_FORBIDDEN"

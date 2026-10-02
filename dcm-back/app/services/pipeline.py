@@ -4,9 +4,10 @@
   ② 추출 원문
      -> ②→③ 키워드 3개 + 요약문        (keyphrase)
      -> ③  bge-m3 임베딩 1024차원       (embedder)
-     -> ④  코사인 유사도 top-3          (candidates, 카테고리 후보만 좁힘 - 게이트 아님)
-        └ 벡터DB 사례로 top-3 재정렬 (case_store, CASE_MODE: 애매할 때만/매번/매번+후보 보장)
+     -> ④  코사인 유사도 top-4          (candidates, 카테고리 후보만 좁힘 - 게이트 아님)
+        └ 벡터DB 사례로 top-4 재정렬 (case_store, CASE_MODE: 애매할 때만/매번/매번+후보 보장)
      -> ⑤  Qwen 의도/카테고리/도구 JSON (llm_engine)
+        └ 의도가 '문의' 면 FAQ 검색(faq_store) 후 비슷한 FAQ 만 넣어 즉답 (없으면 고정 문구)
         -> ⑥  민원 DB 실제 실행 (tool_executor, 의도가 접수/조회/수정/삭제일 때만)
 
 게이트(반려 여부)는 ⑤ 의 의도 판정 결과로 정합니다. 의도는 6지선다이며
@@ -29,7 +30,7 @@ from dataclasses import dataclass, field
 from app.config import settings
 from app.exceptions import NoTextError
 from app.logging_config import get_logger
-from app.services import candidates, case_store, categories, complaint_store, embedder, keyphrase, llm_engine, tool_executor
+from app.services import candidates, case_store, categories, complaint_store, embedder, faq_store, keyphrase, llm_engine, tool_executor
 from app.services.candidates import CandidateResult
 from app.services.case_store import CaseLookup
 from app.services.keyphrase import KeyphraseResult
@@ -136,7 +137,7 @@ def run_candidates(text: str, request_id: str = "-") -> CandidateStage:
     """
     정리된 원문 하나를 ②→③→④(+벡터DB 재정렬)까지만 통과시킵니다.
 
-    run() 이 이 함수를 그대로 쓰고, 학습 노트북도 카테고리 학습 샘플의 후보 3개를
+    run() 이 이 함수를 그대로 쓰고, 학습 노트북도 카테고리 학습 샘플의 후보 4개를
     이 함수로 만듭니다. 그래서 학습 때 보는 후보 분포가 운영과 같습니다.
     """
     timings: dict[str, int] = {}
@@ -327,8 +328,14 @@ def render_result_text(result: PipelineResult) -> str:
         if tr is not None and tr.search:
             lines.append(f"찾은 조건 : {tr.search.get('condition')} → {tr.search.get('matched')}건")
     elif llm.intent.tool is None:
-        lines.append("도구 호출 : 없음 (문의 - 안내 지식으로 즉답, DB 미사용)")
+        lines.append("도구 호출 : 없음 (문의 - FAQ 검색 후 즉답, DB 미사용)")
         lines.append(f"즉답      : {llm.answer or '(생성 실패)'}")
+        fl = llm.faq_lookup
+        if fl is not None:
+            if fl.fallback or fl.model_declined:
+                lines.append("근거 FAQ : 없음 - 고정 안내 문구로 답함")
+            else:
+                lines.append("근거 FAQ : " + ", ".join(f"{h.id}({h.score:.2f})" for h in fl.selected))
     else:
         lines.append(f"도구 호출 : 실패 ({llm.tool_call.parse_error})")
 
@@ -337,6 +344,38 @@ def render_result_text(result: PipelineResult) -> str:
         lines.append("경고      : " + " / ".join(llm.warnings))
 
     return "\n".join(lines)
+
+
+def _render_faq_debug(llm: LlmResult) -> list[str]:
+    """'문의' 답변의 FAQ 검색(RAG) 구간."""
+    fl = llm.faq_lookup
+    lines = ["===== ⑤ 문의 답변 : FAQ 검색 (카테고리 확정·도구 호출 없음) ====="]
+    if fl is None:
+        return lines + ["(FAQ 검색 결과 없음)", ""]
+    lines.append(f"방식 : {fl.mode} | 기준 FAQ_MIN_SCORE={fl.min_score:.2f} | 1위 {fl.best_score:.4f}")
+    lines.append(f"상태 : {fl.reason}")
+    if fl.hits:
+        lines.append(f"-- 상위 {len(fl.hits)}개 --")
+        chosen = {h.id for h in fl.selected}
+        for h in fl.hits:
+            mark = " <-- 프롬프트에 넣음" if h.id in chosen else ""
+            lines.append(f"  {h.rank}. [{h.id}] {h.score:.4f}  {h.question}{mark}")
+            if h.matched and h.matched != h.question:
+                lines.append(f"       (가장 가까운 표현: {h.matched})")
+    elif fl.selected:
+        lines.append(f"-- 프롬프트에 넣은 FAQ {len(fl.selected)}개 (검색 없이 전부) --")
+        for h in fl.selected:
+            lines.append(f"  [{h.id}] {h.question}")
+    lines += [
+        "",
+        "-- Qwen 원시 출력 --",
+        fl.model_answer or "(호출 안 함 - 고정 문구)",
+        "",
+        "-- 최종 답변 --",
+        llm.answer or "(없음)",
+        "",
+    ]
+    return lines
 
 
 def render_debug_text(result: PipelineResult) -> str:
@@ -373,7 +412,7 @@ def render_debug_text(result: PipelineResult) -> str:
     # 벡터DB 로 재정렬했다면 ④ 원래 점수를 보여 주고, ⑤ 에 넘긴 후보는 아래 구간에서 보여 줍니다.
     top4 = lookup.before if lookup else cand.top
     all4 = lookup.before_all if lookup and lookup.before_all else cand.all_scores
-    lines.append("-- 상위 3개" + (" (재정렬 전)" if lookup and lookup.used else " (⑤ 카테고리 확정에 전달)") + " --")
+    lines.append(f"-- 상위 {len(top4)}개" + (" (재정렬 전)" if lookup and lookup.used else " (⑤ 카테고리 확정에 전달)") + " --")
     for c in top4:
         lines.append(f"  {c.rank}. {_pad(c.name, 10)} {c.score:.4f}")
     lines += ["", "-- 7종 전체 --"]
@@ -402,7 +441,7 @@ def render_debug_text(result: PipelineResult) -> str:
                 lines.append(f"  {_pad(name, 10)} {score:.4f}")
         if lookup.used:
             lines.append(
-                f"-- 재정렬 후 상위 3개 (⑤ 카테고리 확정에 전달) | CASE_MODE={case_store.mode()} --"
+                f"-- 재정렬 후 상위 {len(lookup.after)}개 (⑤ 카테고리 확정에 전달) | CASE_MODE={case_store.mode()} --"
             )
             for c in lookup.after:
                 lines.append(f"  {c.rank}. {_pad(c.name, 10)} {c.score:.4f}")
@@ -422,6 +461,17 @@ def render_debug_text(result: PipelineResult) -> str:
         "",
     ]
 
+    if not result.rejected and llm.intent.code != "out_of_scope" and llm.intent.tool is None:
+        # '문의' - 카테고리 확정·도구 호출 없이 FAQ 검색 후 답변
+        lines += _render_faq_debug(llm)
+        lines.append("===== 소요 시간 =====")
+        for key, value in result.timings_ms.items():
+            lines.append(f"  {key:<14} {value}ms")
+        if result.warnings:
+            lines += ["", "===== 경고 ====="]
+            lines += [f"  - {w}" for w in result.warnings]
+        return "\n".join(lines)
+
     if result.rejected or not llm.category_choice.scores:
         # 반려된 경우, 또는 GATE_ENABLED=false 관찰 모드에서 '해당없음'이 통과된 경우
         # (둘 다 llm_engine.decide() 가 카테고리 확정·도구 호출을 생략한 상태입니다)
@@ -438,7 +488,7 @@ def render_debug_text(result: PipelineResult) -> str:
             lines += [f"  - {w}" for w in result.warnings]
         return "\n".join(lines)
 
-    lines += ["===== ⑤ 카테고리 확정 (후보 3개 중) ====="]
+    lines += [f"===== ⑤ 카테고리 확정 (후보 {len(result.candidate.top)}개 중) ====="]
     for name, score in llm.category_choice.scores.items():
         mark = " <-- 선택" if name == llm.category_choice.label else ""
         lines.append(f"  {_pad(name, 10)} {score:.4f}{mark}")
@@ -476,12 +526,23 @@ def render_debug_text(result: PipelineResult) -> str:
     return "\n".join(lines)
 
 
+def _chat_status() -> dict[str, object]:
+    try:
+        from app.services import chat   # chat 이 pipeline 을 import 하므로 여기서 불러옵니다
+
+        return chat.status()
+    except Exception as exc:
+        return {"error": f"{type(exc).__name__}: {exc}"}
+
+
 def status() -> dict[str, object]:
     """모델 설치·로드 상태 요약."""
     return {
         "keyphrase": keyphrase.status(),
         "embedder": embedder.status(),
         "case_store": case_store.status(),
+        "faq_store": faq_store.status(),
+        "chat": _chat_status(),
         "complaint_store": complaint_store.status(),
         "llm": llm_engine.status(),
     }

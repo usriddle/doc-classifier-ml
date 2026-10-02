@@ -7,7 +7,7 @@
 
 과제마다 앞 단계 정답을 넣고 그 단계만 채점합니다. (앞 단계 오류가 섞이지 않게)
   의도     : 원문 -> 6지선다
-  카테고리 : 원문 + ④ 후보 3개 (조회·수정·삭제는 + 없음) -> 정답 번호
+  카테고리 : 원문 + ④ 후보 4개 (조회·수정·삭제는 + 없음) -> 정답 번호
              (정답이 후보 밖이면 '④ 놓침'으로 따로 셈. '없음' 정답은 항상 선택지에 있음)
   도구 JSON: 원문 + 정답 의도 + 정답 카테고리 -> JSON
 """
@@ -34,7 +34,7 @@ METRICS: dict[str, dict[str, str]] = {
     "해당없음 재현율":         {"role": "보조", "better": "high"},   # 해당없음을 해당없음으로
     "오반려율":               {"role": "방어", "better": "low"},    # 정상 민원을 해당없음으로
     "카테고리 정확도":         {"role": "방어", "better": "high"},
-    "카테고리(정답 2·3위) 정확도": {"role": "보조", "better": "high"},
+    "카테고리(정답 2위 이하) 정확도": {"role": "보조", "better": "high"},
     "카테고리 없음 재현율":     {"role": "목표", "better": "high"},   # 주제 없는 조회·수정·삭제를 없음으로
     "카테고리 없음 오판율":     {"role": "방어", "better": "low"},    # 주제가 있는데 없음으로
     "JSON 파싱 성공률":        {"role": "방어", "better": "high"},
@@ -286,7 +286,7 @@ def _aggregate(rows: list[dict]) -> dict[str, dict]:
         "해당없음 재현율": _rate(oos),
         "오반려율": _rate(false_reject),
         "카테고리 정확도": _rate(col("category_ok")),
-        "카테고리(정답 2·3위) 정확도": _rate(cat_hard),
+        "카테고리(정답 2위 이하) 정확도": _rate(cat_hard),
         "카테고리 없음 재현율": _rate(none_recall),
         "카테고리 없음 오판율": _rate(none_false),
         "④ 놓침(참고)": {"value": len(col("category_miss")), "n": len(col("category_miss"))},

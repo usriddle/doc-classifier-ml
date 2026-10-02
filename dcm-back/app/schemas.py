@@ -134,8 +134,31 @@ class CaseLookupDebug(BaseModel):
     reason: str = Field(description="조회한 이유 / 반영하지 않은 이유")
     hits: list[CaseHitItem] = Field(description="CASE_MIN_SCORE 이상인 유사 사례 (최대 CASE_TOP_K)")
     case_scores: dict[str, float] = Field(description="카테고리별 사례 점수 (유사도 합 / 사례 수)")
-    candidates_before: list[CandidateItem] = Field(description="재정렬 전 ④ 상위 3개")
-    candidates_after: list[CandidateItem] = Field(description="재정렬 후 상위 3개 (⑤ 에 전달)")
+    candidates_before: list[CandidateItem] = Field(description="재정렬 전 ④ 상위 k개 (CANDIDATE_TOP_K)")
+    candidates_after: list[CandidateItem] = Field(description="재정렬 후 상위 k개 (⑤ 에 전달)")
+
+
+class FaqHitItem(BaseModel):
+    rank: int
+    id: str = Field(description="FAQ id (data/faq.csv 의 id)")
+    question: str
+    answer: str
+    score: float = Field(description="질문과 이 FAQ(질문·다른 표현 중 가장 가까운 것)의 코사인 유사도")
+    matched: str = Field(default="", description="가장 가까웠던 표현")
+
+
+class FaqLookupDebug(BaseModel):
+    """'문의' 답변의 FAQ 검색(RAG) 결과. 의도가 문의일 때만 채워집니다."""
+
+    mode: str = Field(description="search = 검색해서 고름 / all = 검색 없이 전부 / unavailable = FAQ 없음")
+    fallback: bool = Field(description="비슷한 FAQ 가 없어 Qwen 을 부르지 않고 고정 문구로 답했는지")
+    model_declined: bool = Field(description="Qwen 이 '확인이 어렵다'고 답해 고정 문구로 바꿨는지")
+    reason: str
+    best_score: float
+    min_score: float = Field(description="FAQ_MIN_SCORE")
+    hits: list[FaqHitItem] = Field(description="상위 FAQ_TOP_K 개 (기준 미달 포함)")
+    selected_ids: list[str] = Field(description="실제로 프롬프트에 넣은 FAQ id")
+    model_answer: str = Field(default="", description="Qwen 원시 출력 (호출하지 않았으면 빈 값)")
 
 
 class ChoiceDetail(BaseModel):
@@ -188,7 +211,7 @@ class PipelineDebug(BaseModel):
     embedding_dim: int = Field(description="bge-m3 벡터 차원 (1024)")
     embedding_preview: list[float] = Field(description="벡터 앞부분 미리보기")
     candidates_top: list[CandidateItem] = Field(
-        description="⑤ 에 전달한 상위 3개 (벡터DB 로 재정렬했으면 재정렬 후 점수)"
+        description="⑤ 에 전달한 상위 k개 (CANDIDATE_TOP_K, 벡터DB 로 재정렬했으면 재정렬 후 점수)"
     )
     candidates_all: list[CandidateItem] = Field(
         description="7종 전체 점수 (벡터DB 로 재정렬했으면 재정렬 후 점수)"
@@ -199,6 +222,9 @@ class PipelineDebug(BaseModel):
     )
     case_lookup: CaseLookupDebug | None = Field(
         default=None, description="벡터DB 를 조회했을 때만 채워집니다 (CASE_MODE 에 따라 애매할 때만 또는 매번)"
+    )
+    faq_lookup: FaqLookupDebug | None = Field(
+        default=None, description="'문의' 답변에 쓴 FAQ 검색 결과 (의도가 문의일 때만)"
     )
     intent_choice: ChoiceDetail = Field(description="⑤ 의도 판정(6지선다) 점수. 반려 시에도 채워집니다")
     category_choice: ChoiceDetail | None = Field(
@@ -288,5 +314,91 @@ class PipelineStatusResponse(BaseModel):
     keyphrase: dict
     embedder: dict
     case_store: dict
+    faq_store: dict = Field(default_factory=dict)
+    chat: dict = Field(default_factory=dict)
     complaint_store: dict
     llm: dict
+
+
+# =============================================================================
+# 대화 이어가기 (POST /chat/message)
+# =============================================================================
+class ChatMessageRequest(BaseModel):
+    """
+    대화 한 턴. 처음에는 session_id 를 비워 보내고, 응답의 session_id 를 다음 요청부터 그대로 보내세요.
+
+    - 말로 답할 때      : text 만 ("두 번째 거요")
+    - 화면 버튼으로 고를 때 : selected_complaint_id 에 응답 choices[].complaint_id 를 넣음 (text 는 비워도 됨)
+    """
+
+    session_id: str = Field(default="", description="이전 응답의 session_id. 비우면 새 대화를 시작합니다")
+    user_id: str = Field(
+        default="", description="로그인한 사용자 취급할 식별자. 세션은 이 사용자에게 묶입니다 (비우면 서버 기본값)"
+    )
+    text: str = Field(default="", description="사용자의 말", examples=["가로등 민원 취소해 주세요", "두 번째 거요"])
+    selected_complaint_id: int | None = Field(
+        default=None, description="화면에서 후보 버튼을 눌러 고른 경우 그 민원 번호 (choices[].complaint_id)"
+    )
+
+
+class ChatChoiceItem(BaseModel):
+    """되물을 때 보여 주는 후보 1건. 화면에서는 버튼(label)으로 보여 주고, 누르면 complaint_id 를 보내세요."""
+
+    no: int = Field(description="목록 순번 (1부터). 사용자가 '두 번째 거' 라고 하면 이 번호")
+    complaint_id: int
+    label: str = Field(description="화면 표시용 한 줄")
+    category: str = ""
+    content: str = ""
+    location: str = ""
+    status: str = ""
+    created_at: str = ""
+
+
+class ChatResolutionInfo(BaseModel):
+    """대기 중 사용자의 답을 어떻게 해석했는지."""
+
+    method: str = Field(description="agent = Qwen-Agent / rules = 규칙 / button = 화면 선택")
+    kind: str = Field(description="selected / cancelled / new_request / unresolved")
+    selected_complaint_id: int | None = None
+    note: str = ""
+    agent_decision: dict | None = Field(default=None, description="Qwen-Agent 가 호출한 도구와 인자 (DEBUG=true 일 때만)")
+    agent_raw_output: str = Field(default="", description="Qwen-Agent 모델 원문 출력 (DEBUG=true 일 때만)")
+
+
+class ChatResponse(BaseModel):
+    """대화 한 턴의 결과. 화면은 reply 를 말풍선으로, state 가 awaiting_selection 이면 choices 를 버튼으로 보여 주세요."""
+
+    session_id: str = Field(description="다음 요청에 그대로 보내세요")
+    session_created: bool
+    state: str = Field(description="idle = 대기 없음 / awaiting_selection = 사용자가 후보를 골라야 함")
+    kind: str = Field(
+        description="analyzed(일반 처리) / selection_asked(되물음) / selected(골라서 실행) / cancelled / "
+                    "reasked(다시 물음) / gave_up(여러 번 못 골라 종료) / no_pending"
+    )
+    reply: str = Field(description="사용자에게 보여 줄 문장")
+    pending_action: str | None = Field(default=None, description="대기 중인 동작 (수정 / 취소)")
+    choices: list[ChatChoiceItem] = Field(default_factory=list)
+    tool_result: ToolExecutionResultSchema | None = Field(default=None, description="이번 턴에 ⑥ 민원 DB 를 실행했으면 그 결과")
+    analysis: AnalyzeResponse | None = Field(
+        default=None, description="이번 턴에 ②~⑥ 파이프라인을 돌렸으면 /analyze/text 와 같은 형식의 결과"
+    )
+    resolution: ChatResolutionInfo | None = Field(default=None, description="대기 중 답을 해석했으면 그 결과")
+    notes: list[str] = Field(default_factory=list)
+    timings_ms: dict[str, int] = Field(default_factory=dict)
+
+
+class ChatHistoryItem(BaseModel):
+    role: str = Field(description="user / assistant")
+    text: str
+    created_at: str
+
+
+class ChatSessionResponse(BaseModel):
+    session_id: str
+    user_id: str
+    state: str
+    pending_action: str | None = None
+    choices: list[ChatChoiceItem] = Field(default_factory=list)
+    messages: list[ChatHistoryItem] = Field(default_factory=list)
+    created_at: str
+    updated_at: str

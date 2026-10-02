@@ -19,12 +19,12 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, RedirectResponse
 
 from app import __version__
-from app.config import settings
+from app.config import BASE_DIR, settings
 from app.exceptions import AppError
 from app.logging_config import get_logger, setup_logging
-from app.routers import analyze, extract
+from app.routers import analyze, chat, extract
 from app.schemas import ErrorResponse, HealthResponse
-from app.services import case_store, embedder, llm_engine, ocr_engine, runtime
+from app.services import case_store, embedder, faq_store, llm_engine, ocr_engine, runtime
 
 setup_logging()
 logger = get_logger(__name__)
@@ -71,6 +71,9 @@ async def lifespan(app: FastAPI):
     else:
         logger.info("벡터DB     : 꺼짐 (CASE_STORE_ENABLED=false)")
 
+    # '문의' 답변용 FAQ : CSV 를 읽어 검색 인덱스를 준비합니다. (CSV 가 그대로면 .npy 만 읽음)
+    faq_store.load_or_build()
+
     if settings.PRELOAD_MODELS:
         # 기동은 느려지지만 첫 요청이 빨라집니다. (.env 의 PRELOAD_MODELS)
         logger.info("모델 프리로드 시작 - 가중치 다운로드에 수 분 걸릴 수 있습니다.")
@@ -99,7 +102,7 @@ app = FastAPI(
         "| 단계 | 내용 | 엔드포인트 |\n"
         "|---|---|---|\n"
         "| ①② | 파일에서 텍스트 추출 | `POST /api/v1/extract/text` |\n"
-        "| ②→⑤ | 키워드3개+요약 → bge-m3 → 후보 top-3 → Qwen 판정 | "
+        "| ②→⑤ | 키워드3개+요약 → bge-m3 → 후보 top-4 → Qwen 판정 | "
         "`POST /api/v1/analyze/text`, `POST /api/v1/analyze/file` |\n\n"
         "⑥ 민원 DB 와 ⑦ 사용자 응답은 아직 구현 범위가 아닙니다. "
         "⑤ 의 판정 결과는 `result_text` 에 텍스트로 정리되어 나옵니다.\n\n"
@@ -196,5 +199,25 @@ async def health() -> HealthResponse:
     )
 
 
+# 프론트를 다른 주소(예: http://localhost:3000)에서 띄울 때만 필요합니다. (.env 의 CORS_ALLOW_ORIGINS)
+if settings.cors_origins:
+    from fastapi.middleware.cors import CORSMiddleware
+
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.cors_origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
 app.include_router(extract.router, prefix=settings.API_PREFIX, tags=["extract"])
 app.include_router(analyze.router, prefix=settings.API_PREFIX, tags=["analyze"])
+app.include_router(chat.router, prefix=settings.API_PREFIX, tags=["chat"])
+
+# 대화 이어가기 동작 확인용 최소 화면 (front_stub/demo.html). 실제 프론트를 붙이면 끄세요.
+_demo_dir = BASE_DIR / "front_stub"
+if settings.CHAT_DEMO_ENABLED and _demo_dir.is_dir():
+    from fastapi.staticfiles import StaticFiles
+
+    app.mount("/chat-demo", StaticFiles(directory=str(_demo_dir), html=True), name="chat-demo")

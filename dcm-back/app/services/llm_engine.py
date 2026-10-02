@@ -6,7 +6,7 @@
 
   1) 의도 판정      - "의도: " 뒤에 올 번호 토큰(1~6)의 확률을 forward 1회로 계산
                       (1~5 = 문의/접수/조회/수정/삭제, 6 = 해당없음 -> 게이트 반려)
-  2) 카테고리 확정  - ④ 가 추린 후보 3개 중 번호 토큰(1~3) 확률을 forward 1회로 계산
+  2) 카테고리 확정  - ④ 가 추린 후보 4개 중 번호 토큰(1~4, 조회·수정·삭제는 5=없음) 확률을 forward 1회로 계산
   3) 도구 호출 JSON - generate 로 JSON 을 생성 (의도가 '문의'면 안내 문장을 생성)
 
 1)2) 는 자유 생성이 아니라 "번호 토큰 1회 계산"입니다.
@@ -46,7 +46,8 @@ from dataclasses import dataclass, field
 from app.config import BASE_DIR, settings
 from app.exceptions import ModelUnavailableError
 from app.logging_config import get_logger
-from app.services import prompts, runtime
+from app.services import faq_store, prompts, runtime
+from app.services.faq_store import FaqLookup
 from app.services.prompts import Intent
 
 logger = get_logger(__name__)
@@ -87,6 +88,7 @@ class LlmResult:
     category_choice: Choice
     tool_call: ToolCall
     answer: str = ""             # '문의' 의도일 때의 즉답
+    faq_lookup: FaqLookup | None = None   # '문의' 답변에 쓴 FAQ 검색 결과
     warnings: list[str] = field(default_factory=list)
     timings_ms: dict[str, int] = field(default_factory=dict)
 
@@ -847,9 +849,30 @@ def generate_tool_call(
     return tool_call
 
 
-def generate_answer(text: str) -> str:
-    """'문의' 즉답 생성 (도구 호출 없음)."""
-    return _generate(prompts.build_answer_prompt(text), settings.LLM_MAX_NEW_TOKENS_ANSWER)
+def generate_answer(text: str, faqs: list[tuple[str, str]]) -> str:
+    """'문의' 즉답 생성 (도구 호출 없음). faqs 는 faq_store 가 고른 (질문, 답변) 목록."""
+    return _generate(prompts.build_answer_prompt(text, faqs), settings.LLM_MAX_NEW_TOKENS_ANSWER)
+
+
+def answer_inquiry(text: str) -> tuple[str, FaqLookup]:
+    """
+    '문의' 답변 전체 흐름. (FAQ 검색 -> 근거가 있으면 Qwen 답변, 없으면 고정 문구)
+
+      1. faq_store.lookup() 으로 질문과 비슷한 FAQ 를 고름
+      2. 기준(FAQ_MIN_SCORE)을 넘은 FAQ 가 없으면 Qwen 을 부르지 않고 FAQ_FALLBACK_MESSAGE
+      3. 있으면 그 FAQ 만 넣어 Qwen 이 답변
+      4. Qwen 이 '확인이 어렵다'고 답하면 FAQ_FALLBACK_MESSAGE 로 바꿈 (안내 문구를 한 가지로 통일)
+    """
+    lookup = faq_store.lookup(text)
+    if lookup.fallback:
+        return settings.FAQ_FALLBACK_MESSAGE, lookup
+    answer = generate_answer(text, [(h.question, h.answer) for h in lookup.selected]).strip()
+    lookup.model_answer = answer
+    if not answer or prompts.ANSWER_DECLINE_PHRASE in answer:
+        lookup.model_declined = True
+        lookup.reason += " - Qwen 이 FAQ 로 답할 수 없다고 판단해 고정 문구로 바꿈"
+        return settings.FAQ_FALLBACK_MESSAGE, lookup
+    return answer, lookup
 
 
 # 번호 판정 때 어시스턴트 발화 앞머리. 학습 데이터도 이 문자열을 그대로 씁니다.
@@ -862,7 +885,7 @@ def decide(user_text: str, candidate_names: list[str]) -> LlmResult:
     ⑤ 전체 판정.
 
     user_text        : ② 에서 추출한 원문 (길면 앞부분만 사용)
-    candidate_names  : ④ 가 추린 카테고리 후보 이름 3개
+    candidate_names  : ④ 가 추린 카테고리 후보 이름 (CANDIDATE_TOP_K 개, 기본 4)
     """
     warnings: list[str] = []
     timings: dict[str, int] = {}
@@ -893,8 +916,8 @@ def decide(user_text: str, candidate_names: list[str]) -> LlmResult:
         )
 
     # --- 2) 카테고리 확정 ---
-    #   접수          : 후보 3개 중 선택
-    #   조회·수정·삭제 : 후보 3개 + 없음 중 선택 (주제를 특정할 수 없으면 없음 -> category_name "")
+    #   접수          : 후보 4개 중 선택
+    #   조회·수정·삭제 : 후보 4개 + 없음 중 선택 (주제를 특정할 수 없으면 없음 -> category_name "")
     #   문의          : 카테고리를 쓰지 않으므로 판정하지 않음
     category_name = ""
     category_choice = Choice(number=0, label="", score=0.0, scores={})
@@ -908,10 +931,11 @@ def decide(user_text: str, candidate_names: list[str]) -> LlmResult:
     # --- 3) 도구 호출 JSON / 문의 즉답 ---
     started = time.perf_counter()
     answer = ""
+    faq_lookup: FaqLookup | None = None
     if intent.tool is None:
-        # 그림의 '문의' 갈래 - 도구 호출 없음, DB 미사용
-        answer = generate_answer(text)
-        tool_call = ToolCall(called=False, raw=answer)
+        # 그림의 '문의' 갈래 - 도구 호출 없음, DB 미사용. FAQ 검색(RAG) 후 답변
+        answer, faq_lookup = answer_inquiry(text)
+        tool_call = ToolCall(called=False, raw=faq_lookup.model_answer)   # Qwen 원시 출력 (고정 문구면 빈 값)
     else:
         tool_call = generate_tool_call(text, intent, category_name, warnings)
     timings["tool_ms"] = int((time.perf_counter() - started) * 1000)
@@ -923,6 +947,7 @@ def decide(user_text: str, candidate_names: list[str]) -> LlmResult:
         category_choice=category_choice,
         tool_call=tool_call,
         answer=answer,
+        faq_lookup=faq_lookup,
         warnings=warnings,
         timings_ms=timings,
     )

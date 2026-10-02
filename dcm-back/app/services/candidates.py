@@ -1,10 +1,10 @@
 """
-④ 후보 추림 - 코사인 유사도 top-3.
+④ 후보 추림 - 코사인 유사도 top-4. (개수는 .env 의 CANDIDATE_TOP_K)
 
 ③ 에서 만든 질의 벡터(키워드3개+요약문)와 7종 카테고리 정의문 벡터의
-코사인 유사도를 계산해 상위 3개를 고릅니다. 학습하지 않습니다.
+코사인 유사도를 계산해 상위 4개를 고릅니다. 학습하지 않습니다.
 
-여기서 고른 3개만 ⑤ Qwen 에게 넘어가고, Qwen 이 그 중 하나를 확정합니다.
+여기서 고른 4개만 ⑤ Qwen 에게 넘어가고, Qwen 이 그 중 하나를 확정합니다.
 (7종 전체를 넘기지 않으므로 프롬프트가 짧아지고 판정이 안정적입니다)
 
 카테고리 벡터는 최초 1회 계산해 메모리에 캐시합니다.
@@ -53,7 +53,7 @@ class CategoryScore:
 class CandidateResult:
     """④ 결과."""
 
-    top: list[CategoryScore] = field(default_factory=list)      # 상위 3개 (Qwen 입력)
+    top: list[CategoryScore] = field(default_factory=list)      # 상위 CANDIDATE_TOP_K 개 (Qwen 입력)
     all_scores: list[CategoryScore] = field(default_factory=list)  # 7종 전체 (DEBUG 확인용)
     query_vector: np.ndarray | None = None
     low_confidence: bool = False   # 1위 점수가 임계값 미만. 참고용 표시일 뿐 반려 기준 아님
@@ -146,7 +146,7 @@ def reset_cache() -> None:
 
 def select(query_text: str) -> CandidateResult:
     """
-    질의문 -> 카테고리 후보 top-3.
+    질의문 -> 카테고리 후보 top-k (CANDIDATE_TOP_K).
 
     query_text 는 keyphrase.build_query() 가 만든 "키워드: ...\\n요약: ..." 문자열입니다.
     """

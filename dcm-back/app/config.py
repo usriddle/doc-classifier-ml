@@ -29,6 +29,9 @@ class Settings(BaseSettings):
     APP_ENV: str = "local"
     DEBUG: bool = True
     API_PREFIX: str = "/api/v1"
+    # 프론트를 다른 주소에서 띄울 때 허용할 출처. 쉼표로 구분 (예: http://localhost:3000,https://minwon.example.kr)
+    # 비우면 CORS 를 켜지 않습니다. (같은 주소에서 서비스하거나 Swagger 로만 쓸 때)
+    CORS_ALLOW_ORIGINS: str = ""
 
     # --- 업로드 ---
     MAX_UPLOAD_MB: int = 20
@@ -85,7 +88,9 @@ class Settings(BaseSettings):
     EMBED_MAX_SEQ_LENGTH: int = 1024  # 8192 까지 가능하지만 길수록 느립니다
 
     # --- ④ 후보 추림 ---
-    CANDIDATE_TOP_K: int = 3          # 그림의 "top-3"
+    # ⑤ Qwen 에게 넘길 카테고리 후보 수. (조회·수정·삭제는 여기에 "없음" 이 하나 더 붙음)
+    # 바꾸면 ⑤ 의 선택지가 달라지므로 어댑터를 다시 학습해야 합니다. (프롬프트 지문이 바뀌어 서버가 경고함)
+    CANDIDATE_TOP_K: int = 4          # 예전 3
     # 1위 유사도가 이보다 낮으면 candidates.low_confidence=true 로 표시하고 벡터DB(사례)를
     # 열어 후보를 재정렬합니다. (아래 게이트의 반려 기준은 아닙니다)
     CANDIDATE_MIN_SCORE: float = 0.65  # 학습 노트북 6-1 측정으로 고른 값 (예전 기본 0.45)
@@ -96,7 +101,7 @@ class Settings(BaseSettings):
     CANDIDATE_SCORING: str = "multi"   # 학습 노트북 6-1 측정으로 고른 값
 
     # --- ④ 보조 : 벡터DB (라벨링된 사례) ---
-    # ④ 가 low_confidence 일 때만 비슷한 사례의 라벨로 top-3 후보를 재정렬합니다.
+    # ④ 가 low_confidence 일 때만 비슷한 사례의 라벨로 top-k 후보를 재정렬합니다.
     CASE_STORE_ENABLED: bool = True
     # 사례 CSV (컬럼 text, category). 같은 폴더에 .npy / .meta.json 이 자동 생성됩니다.
     CASE_CSV_PATH: str = "./data/cases.csv"
@@ -113,6 +118,25 @@ class Settings(BaseSettings):
     # pgvector 접속 정보. 예) postgresql://postgres:비밀번호@localhost:5432/minwon
     CASE_PG_DSN: str = ""
     CASE_PG_TABLE: str = "complaint_cases"
+
+    # --- '문의' 답변용 FAQ 검색 (RAG) ---
+    # 질문과 비슷한 FAQ 몇 개만 골라 답변 프롬프트에 넣습니다. (app/services/faq_store.py)
+    # false 면 검색하지 않고 CSV 의 FAQ 전부를 넣습니다. (예전 방식 - FAQ 가 적을 때 비교용)
+    FAQ_ENABLED: bool = True
+    # FAQ CSV (컬럼 id, question, variants, answer, category, source, updated_at).
+    # 같은 폴더에 .npy / .meta.json 이 자동 생성됩니다.
+    FAQ_CSV_PATH: str = "./data/faq.csv"
+    FAQ_TOP_K: int = 3                # 프롬프트에 넣을 최대 FAQ 수
+    # 질문과 FAQ(질문·다른 표현 중 가장 가까운 것)의 유사도가 이보다 낮으면 프롬프트에 넣지 않습니다.
+    # 하나도 남지 않으면 Qwen 을 부르지 않고 FAQ_FALLBACK_MESSAGE 로 답합니다.
+    # 시작값입니다 - 문의 질문으로 측정해 조정하세요. (README 5.11)
+    FAQ_MIN_SCORE: float = 0.6
+    FAQ_QUERY_MAX_CHARS: int = 300    # 검색에 쓸 질문 길이 상한
+    # 비슷한 FAQ 가 없거나 Qwen 이 '확인이 어렵다'고 답했을 때 돌려줄 문구
+    FAQ_FALLBACK_MESSAGE: str = (
+        "문의하신 내용은 지금 안내해 드리기 어렵습니다. "
+        "담당 부서에 직접 문의해 주시거나, 확인이 필요한 내용을 민원으로 접수해 주세요."
+    )
 
     # --- ⑥ 민원 DB (SQLite - 등록/조회/수정/취소 실제 실행) ---
     # PostgreSQL 이 아니라 SQLite 파일인 이유는 README 의 "5.5 ⑥ 민원 DB" 참고.
@@ -133,6 +157,27 @@ class Settings(BaseSettings):
     # 뚜렷이 겹치지 않는 문장도, 의도(조회)만 명확하면 통과합니다.
     # false 로 두면 차단하지 않고 반려 사유만 gate.reason 에 남깁니다. (관찰용)
     GATE_ENABLED: bool = True
+
+    # --- 대화 이어가기 (POST /api/v1/chat/message) ---
+    # 수정·취소 대상이 여러 건이라 "어느 민원인가요?" 라고 되물은 뒤, 사용자의 다음 말
+    # ("두 번째 거요", "가로등 거", "37번이요", "아니에요 그냥 둘게요")을 이전 후보 목록과 연결합니다.
+    # (app/services/chat.py, chat_agent.py, session_store.py)
+    # true 면 Qwen-Agent(function calling)로 다음 말을 해석합니다. 이미 올라와 있는 Qwen 을 그대로 씁니다.
+    # false 거나 qwen-agent 가 설치되지 않았으면 규칙(“N번째”, “N번 민원”, 거절 표현)으로만 해석합니다.
+    CHAT_AGENT_ENABLED: bool = True
+    # 대화 상태(세션·대기 중인 선택·대화 기록)를 저장할 SQLite 파일
+    CHAT_DB_PATH: str = "./data/chat_sessions.db"
+    CHAT_PENDING_TTL_MINUTES: int = 30      # 되물은 뒤 이 시간이 지나면 선택 대기를 버림
+    CHAT_MAX_SELECTION_ATTEMPTS: int = 3    # 이만큼 되물어도 못 고르면 선택 대기를 끝냄
+    CHAT_MAX_CHOICES: int = 10              # 되물을 때 보여 줄(에이전트에게 줄) 최대 후보 수
+    CHAT_HISTORY_MESSAGES: int = 6          # 에이전트에게 줄 최근 대화 수 (사용자+시스템 발화)
+    CHAT_AGENT_MAX_NEW_TOKENS: int = 160    # 에이전트 한 번의 생성 길이 (도구 호출 JSON 한 개면 충분)
+    # true 면 에이전트가 말할 때만 QLoRA 어댑터를 끄고 베이스 Qwen 으로 판단합니다.
+    # (어댑터는 판정 프롬프트로 학습되어 있어, 에이전트 프롬프트에서는 베이스가 나을 수 있음 - 측정해 보고 고르세요)
+    # 어댑터를 끄는 동안 모델 전체에 적용되므로, 동시에 여러 요청을 받는 운영 서버에서는 false 로 두세요.
+    CHAT_AGENT_DISABLE_ADAPTER: bool = False
+    # true 면 front_stub/ 의 최소 데모 화면을 http://서버/chat-demo/demo.html 로 엽니다. (운영에서는 false)
+    CHAT_DEMO_ENABLED: bool = True
 
     # --- ⑤ Qwen3.5 4B (+ QLoRA) ---
     # Colab T4(16GB)에서 4bit 로 올리는 것을 기준으로 잡았습니다.
@@ -173,6 +218,10 @@ class Settings(BaseSettings):
     LOG_LEVEL: str = "INFO"
     LOG_DIR: str = "./logs"
     LOG_TO_FILE: bool = True
+
+    @property
+    def cors_origins(self) -> list[str]:
+        return [o.strip() for o in (self.CORS_ALLOW_ORIGINS or "").split(",") if o.strip()]
 
     @property
     def max_upload_bytes(self) -> int:

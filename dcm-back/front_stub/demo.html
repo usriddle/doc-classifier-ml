@@ -1,0 +1,100 @@
+<!doctype html>
+<!--
+  대화 이어가기 동작 확인용 최소 화면 (실제 프론트가 아님 - 디자인 없음).
+  서버를 띄운 뒤 http://127.0.0.1:8000/chat-demo/demo.html 로 여세요. (CHAT_DEMO_ENABLED=true)
+  서버가 같은 주소에서 이 파일을 내주므로 CORS 설정이 필요 없습니다.
+-->
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>민원 대화 데모</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 640px; margin: 24px auto; padding: 0 16px; }
+    #log { border: 1px solid #ccc; border-radius: 8px; padding: 12px; height: 420px; overflow-y: auto; }
+    .msg { margin: 8px 0; white-space: pre-wrap; }
+    .user { text-align: right; color: #0b57d0; }
+    .assistant { color: #222; }
+    .meta { font-size: 12px; color: #888; }
+    #choices button { display: block; margin: 4px 0; text-align: left; width: 100%; }
+    form { display: flex; gap: 8px; margin-top: 8px; }
+    input[type=text] { flex: 1; padding: 8px; }
+  </style>
+</head>
+<body>
+  <p>
+    서버 <input id="base" type="text" value="/api/v1" />
+    사용자 <input id="user" type="text" value="demo-user" size="10" />
+    <button id="reset" type="button">새 대화</button>
+  </p>
+  <div id="log"></div>
+  <div id="choices"></div>
+  <form id="form">
+    <input id="text" type="text" placeholder="예) 가로등 민원 취소해 주세요 → 두 번째 거요" autocomplete="off" />
+    <button type="submit">보내기</button>
+  </form>
+
+  <script type="module">
+    import { MinwonChatClient } from "./chatClient.js";
+
+    const $ = (id) => document.getElementById(id);
+    let client = null;
+    const makeClient = () =>
+      (client = new MinwonChatClient({ baseUrl: $("base").value, userId: $("user").value, storage: window.sessionStorage }));
+
+    function add(role, text, meta = "") {
+      const div = document.createElement("div");
+      div.className = `msg ${role}`;
+      div.textContent = text;
+      if (meta) {
+        const m = document.createElement("div");
+        m.className = "meta";
+        m.textContent = meta;
+        div.appendChild(m);
+      }
+      $("log").appendChild(div);
+      $("log").scrollTop = $("log").scrollHeight;
+    }
+
+    function show(res) {
+      const how = res.resolution ? ` · ${res.resolution.method}: ${res.resolution.note}` : "";
+      add("assistant", res.reply, `${res.kind} → ${res.state}${how}`);
+      $("choices").innerHTML = "";
+      if (res.state === "awaiting_selection") {
+        for (const c of res.choices) {
+          const b = document.createElement("button");
+          b.textContent = `${c.no}. ${c.label}`;
+          b.onclick = () => run(() => client.choose(c.complaint_id), `[버튼] ${c.label}`);
+          $("choices").appendChild(b);
+        }
+      }
+    }
+
+    async function run(call, userText) {
+      add("user", userText);
+      try {
+        show(await call());
+      } catch (e) {
+        add("assistant", `오류: ${e.message}`, e.code || "");
+      }
+    }
+
+    $("form").onsubmit = (e) => {
+      e.preventDefault();
+      const text = $("text").value.trim();
+      if (!text) return;
+      $("text").value = "";
+      if (!client) makeClient();
+      run(() => client.send(text), text);
+    };
+    $("reset").onclick = async () => {
+      if (!client) makeClient();
+      await client.reset();
+      makeClient();
+      $("log").innerHTML = "";
+      $("choices").innerHTML = "";
+    };
+    $("base").onchange = $("user").onchange = makeClient;
+  </script>
+</body>
+</html>

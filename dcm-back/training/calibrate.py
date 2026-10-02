@@ -6,7 +6,7 @@
   1) collect()  : 문장마다 질의문 벡터를 한 번만 만들고(캐시), 아래 재료를 모아 둡니다.
                   - 카테고리 7종 점수 (single / multi 두 방식 모두)
                   - 비슷한 사례 상위 N개의 (카테고리, 유사도)  ← 문턱과 무관하게 전부 조회
-  2) sweep()    : 방식 × 문턱 × 가중치 조합마다 top-3 를 다시 계산합니다. (산수라 몇 초)
+  2) sweep()    : 방식 × 문턱 × 가중치 조합마다 top-k(CANDIDATE_TOP_K) 를 다시 계산합니다. (산수라 몇 초)
   3) choose()   : 조정용(train+val)에서 고르고, 평가용(test)은 확인만 합니다.
 
 계산식은 운영과 같은 함수(candidates.score_matrix, case_store.case_scores_from / combine)를
@@ -124,7 +124,7 @@ def collect(
 
 
 # =============================================================================
-# 2) 한 방식으로 top-3 다시 계산
+# 2) 한 방식으로 top-k 다시 계산
 # =============================================================================
 @dataclass(frozen=True)
 class Strategy:
@@ -298,7 +298,7 @@ def rows(results: list[Result]) -> list[dict]:
         out.append({
             "방식": r.strategy.label(),
             "놓침": r.miss,
-            "후보3 적중률": f"{r.recall:.1%}",
+            "후보 적중률": f"{r.recall:.1%}",
             "1위 적중률": f"{r.top1 / r.n:.1%}" if r.n else "-",
             "살림": r.fixed,
             "망가뜨림": r.broken,
@@ -323,7 +323,7 @@ def per_category(results: dict[str, Result]) -> list[dict]:
 
 def consistency(table: ScoreTable, cands: dict[str, dict]) -> tuple[int, int, list[str]]:
     """
-    지금 설정으로 여기서 계산한 top-3 가 6단계(운영 코드) 결과와 같은지.
+    지금 설정으로 여기서 계산한 top-k 가 6단계(운영 코드) 결과와 같은지.
     (배치 임베딩과 1건씩 임베딩의 미세한 소수점 차이로 동점 근처 몇 건은 다를 수 있습니다)
     """
     strat = Strategy.current()
@@ -348,7 +348,7 @@ def miss_examples(table: ScoreTable, strat: Strategy, index: list[int], limit: i
                 "id": table.ids[i],
                 "문장": table.texts[i],
                 "정답": table.gold[i],
-                "후보 3개": " / ".join(names),
+                "후보": " / ".join(names),
                 "사례 1위": (max(cs.items(), key=lambda x: x[1])[0] if cs else "(없음)"),
                 "최근접 사례 유사도": round(table.hits[i][0][1], 3) if table.hits[i] else None,
             })

@@ -28,6 +28,8 @@ from app.schemas import (
     CandidateItem,
     CaseHitItem,
     CaseLookupDebug,
+    FaqHitItem,
+    FaqLookupDebug,
     CategoriesResponse,
     CategoryInfo,
     ChoiceDetail,
@@ -103,6 +105,25 @@ def _to_case_lookup(lookup) -> CaseLookupDebug | None:
     )
 
 
+def _to_faq_lookup(lookup) -> FaqLookupDebug | None:
+    if lookup is None:
+        return None
+    return FaqLookupDebug(
+        mode=lookup.mode,
+        fallback=lookup.fallback,
+        model_declined=lookup.model_declined,
+        reason=lookup.reason,
+        best_score=lookup.best_score,
+        min_score=lookup.min_score,
+        hits=[
+            FaqHitItem(rank=h.rank, id=h.id, question=h.question, answer=h.answer, score=h.score, matched=h.matched)
+            for h in lookup.hits
+        ],
+        selected_ids=[h.id for h in lookup.selected],
+        model_answer=lookup.model_answer,
+    )
+
+
 def _build_response(result: PipelineResult, file_meta: FileMeta | None) -> AnalyzeResponse:
     # llm 은 항상 채워져 있습니다. ⑤ 의도 판정(6지선다)까지는 반려 여부와 무관하게
     # 항상 호출되고, 게이트는 그 결과("해당없음"인지)만 보고 통과/반려를 가릅니다.
@@ -132,6 +153,7 @@ def _build_response(result: PipelineResult, file_meta: FileMeta | None) -> Analy
             candidate_margin=cand.margin,
             low_confidence=cand.low_confidence,
             case_lookup=_to_case_lookup(result.case_lookup),
+            faq_lookup=_to_faq_lookup(llm.faq_lookup),
             intent_choice=_to_choice(llm.intent_choice),
             category_choice=_to_choice(llm.category_choice) if llm.category_choice.scores else None,
             llm_raw_output=llm.tool_call.raw,
@@ -230,12 +252,12 @@ async def _read_upload(upload: UploadFile) -> bytes:
         "**처리 순서**\n"
         "1. 원문에서 키워드 3개 + 요약문을 만듭니다. (kiwipiepy + KeyBERT + TextRank)\n"
         "2. 그 질의문을 bge-m3 로 1024차원 벡터로 만듭니다. (③)\n"
-        "3. 카테고리 7종 정의문과 코사인 유사도를 계산해 상위 3개를 추립니다. (④, 후보만 좁힘) "
-        "벡터DB 의 비슷한 라벨링 사례로 상위 3개를 다시 정렬합니다. "
+        "3. 카테고리 7종 정의문과 코사인 유사도를 계산해 상위 4개를 추립니다. (④, 후보만 좁힘) "
+        "벡터DB 의 비슷한 라벨링 사례로 상위 4개를 다시 정렬합니다. "
         "(`CASE_MODE`: low_confidence 면 1위 유사도가 `CANDIDATE_MIN_SCORE` 미만일 때만, "
         "always·union 이면 매번)\n"
         "4. Qwen3.5-4B 가 의도를 6지선다로 판정합니다. 문의·접수·조회·수정·삭제 중 "
-        "하나면 이어서 후보 3개 중 카테고리를 확정하고 도구 호출 JSON 을 만듭니다. "
+        "하나면 이어서 후보 4개 중 카테고리를 확정하고 도구 호출 JSON 을 만듭니다. "
         "**어디에도 해당하지 않아 '해당없음'으로 판정되면 카테고리·도구 없이 여기서 멈추고 "
         "`status=\"rejected\"` 와 안내 문구(`answer`)만 돌려줍니다.** "
         "카테고리(④)와는 무관한 판단이라, \"제가 어제 문의한 내용 보여줘\"처럼 특정 "
@@ -346,7 +368,8 @@ async def list_categories() -> CategoriesResponse:
     summary="모델 설치·로드 상태",
     description=(
         "bge-m3 / Qwen 이 설치되어 있는지, 이미 메모리에 올라와 있는지 확인합니다. "
-        "`case_store` 에서 벡터DB(라벨링된 사례) 준비 상태와 사례 수를 볼 수 있습니다.\n"
+        "`case_store` 에서 벡터DB(라벨링된 사례) 준비 상태와 사례 수를, "
+        "`faq_store` 에서 '문의' 답변용 FAQ 검색 준비 상태를 볼 수 있습니다.\n"
         "`loaded=false` 면 다음 요청에서 가중치를 내려받고 로드하느라 느릴 수 있습니다."
     ),
 )
@@ -359,6 +382,8 @@ async def pipeline_status() -> PipelineStatusResponse:
         keyphrase=state["keyphrase"],   # type: ignore[arg-type]
         embedder=state["embedder"],     # type: ignore[arg-type]
         case_store=state["case_store"], # type: ignore[arg-type]
+        faq_store=state["faq_store"],   # type: ignore[arg-type]
+        chat=state["chat"],             # type: ignore[arg-type]
         complaint_store=state["complaint_store"],  # type: ignore[arg-type]
         llm=state["llm"],               # type: ignore[arg-type]
     )

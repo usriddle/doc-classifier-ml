@@ -9,7 +9,7 @@
   번호 정답 토큰            : llm_engine.number_token_ids(tokenizer, n)
   어시스턴트 앞머리         : llm_engine.INTENT_ASSISTANT_PREFIX / CATEGORY_ASSISTANT_PREFIX
   원문 정리                 : keyphrase.normalize -> llm_engine.prepare_text
-  ④ 후보 3개               : pipeline.run_candidates (벡터DB 재정렬 포함)
+  ④ 후보 4개               : pipeline.run_candidates (벡터DB 재정렬 포함)
 
 토큰화도 추론과 같게 합니다. 추론은 [프리픽스] 와 [요청 구간] 을 따로 encode 해
 이어 붙이므로, 학습도 똑같이 따로 encode 한 뒤 정답 토큰을 뒤에 붙입니다.
@@ -165,7 +165,7 @@ class BuildStats:
     counts: Counter = field(default_factory=Counter)
     available: Counter = field(default_factory=Counter)
     too_long: list[str] = field(default_factory=list)
-    category_miss: list[str] = field(default_factory=list)      # 정답이 ④ 후보 3개 밖
+    category_miss: list[str] = field(default_factory=list)      # 정답이 ④ 후보 밖
     category_injected: list[str] = field(default_factory=list)  # 학습용으로 정답을 끼워 넣음
     gold_position: Counter = field(default_factory=Counter)     # 카테고리 정답이 몇 번째 후보인지
     lengths: list[int] = field(default_factory=list)
@@ -220,7 +220,7 @@ class SampleBuilder:
         )
 
     def category_sample(self, record: GoldRecord, names: list[str], note: str = "") -> Sample:
-        """names = ④ 후보 3개. 조회·수정·삭제면 마지막에 '없음' 이 붙습니다. (운영과 같은 선택지)"""
+        """names = ④ 후보 (CANDIDATE_TOP_K 개). 조회·수정·삭제면 마지막에 '없음' 이 붙습니다. (운영과 같은 선택지)"""
         allow_none = record.category_allows_none
         labels = prompts.category_labels(names, allow_none)
         number = labels.index(record.category) + 1
