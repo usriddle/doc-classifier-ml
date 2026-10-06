@@ -1,5 +1,5 @@
 """
-⑤ Qwen QLoRA 학습용 패키지.
+⑤ Gemma QLoRA 학습용 패키지.
 
   records.py   정답 레코드(민원 문장 + 정답 의도/카테고리/도구 인자) 읽기·검증·분할
   samples.py   정답 레코드 -> 학습 샘플(토큰 id + loss 마스크). 추론과 같은 함수로 조립

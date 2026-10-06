@@ -91,7 +91,7 @@ class HealthResponse(BaseModel):
     llm_adapter: str | None = Field(default=None, description="적용된 QLoRA 어댑터 경로")
 
 # =============================================================================
-# 분류 파이프라인 (③ 임베딩 -> ④ 후보 추림 -> ⑤ Qwen 판정)
+# 분류 파이프라인 (③ 임베딩 -> ④ 후보 추림 -> ⑤ Gemma 판정)
 # =============================================================================
 class AnalyzeTextRequest(BaseModel):
     """POST /analyze/text 요청 본문. 파일 없이 문장만으로 ②~⑥ 을 테스트합니다."""
@@ -151,14 +151,14 @@ class FaqLookupDebug(BaseModel):
     """'문의' 답변의 FAQ 검색(RAG) 결과. 의도가 문의일 때만 채워집니다."""
 
     mode: str = Field(description="search = 검색해서 고름 / all = 검색 없이 전부 / unavailable = FAQ 없음")
-    fallback: bool = Field(description="비슷한 FAQ 가 없어 Qwen 을 부르지 않고 고정 문구로 답했는지")
-    model_declined: bool = Field(description="Qwen 이 '확인이 어렵다'고 답해 고정 문구로 바꿨는지")
+    fallback: bool = Field(description="비슷한 FAQ 가 없어 Gemma 를 부르지 않고 고정 문구로 답했는지")
+    model_declined: bool = Field(description="Gemma 가 '확인이 어렵다'고 답해 고정 문구로 바꿨는지")
     reason: str
     best_score: float
     min_score: float = Field(description="FAQ_MIN_SCORE")
     hits: list[FaqHitItem] = Field(description="상위 FAQ_TOP_K 개 (기준 미달 포함)")
     selected_ids: list[str] = Field(description="실제로 프롬프트에 넣은 FAQ id")
-    model_answer: str = Field(default="", description="Qwen 원시 출력 (호출하지 않았으면 빈 값)")
+    model_answer: str = Field(default="", description="Gemma 원시 출력 (호출하지 않았으면 빈 값)")
 
 
 class ChoiceDetail(BaseModel):

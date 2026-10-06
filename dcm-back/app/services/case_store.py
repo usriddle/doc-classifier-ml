@@ -1,7 +1,7 @@
 """
 ④ 보조 - 벡터DB (라벨링된 사례).
 
-비슷한 과거 사례의 카테고리 라벨로 ④ 의 top-4 후보를 다시 정렬합니다. (개수는 CANDIDATE_TOP_K)
+비슷한 과거 사례의 카테고리 라벨로 ④ 의 top-3 후보를 다시 정렬합니다. (개수는 CANDIDATE_TOP_K)
 언제·어떻게 쓸지는 .env 의 CASE_MODE 로 고릅니다.
   low_confidence : ④ 1위 유사도 < CANDIDATE_MIN_SCORE 일 때만 섞기 (기존 방식)
   always         : 매번 섞기

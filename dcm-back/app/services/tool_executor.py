@@ -1,9 +1,9 @@
 """
 ⑤ 가 만든 도구 호출 JSON 을 실제로 실행합니다. (그림의 ⑤→⑥ 화살표)
 
-Qwen 은 "어떤 도구를, 어떤 값으로 부를지"(tool_call.name / arguments) 만 정합니다.
-그 JSON 을 DB 에 실제로 쓰거나 읽는 코드는 전부 여기 있는, Qwen 과 무관한 결정적
-(deterministic) 파이썬 함수입니다. Qwen 이 만든 값은 여기서 다시 한번
+Gemma 는 "어떤 도구를, 어떤 값으로 부를지"(tool_call.name / arguments) 만 정합니다.
+그 JSON 을 DB 에 실제로 쓰거나 읽는 코드는 전부 여기 있는, Gemma 와 무관한 결정적
+(deterministic) 파이썬 함수입니다. Gemma 가 만든 값은 여기서 다시 한번
 스키마·소유권·상태를 검증한 뒤에만 실행됩니다 - 모델이 잘못된 id 나 없는
 카테고리를 적어도 그대로 실행되지 않습니다. (그림의 '규칙검사')
 
@@ -179,8 +179,9 @@ def _find(args: dict, user_id: str, exclude_cancelled: bool) -> FindResult:
     cid = _parse_id(args.get("complaint_id"))
     category = str(args.get("category") or "").strip()
     if category and category not in categories.NAMES:
-        # 7종 이름·코드가 아니면(없음 등) 카테고리 조건으로 쓰지 않습니다. ('기타'로 바꾸면 엉뚱하게 걸러짐)
-        known = categories.BY_CODE.get(category.lower())
+        # 7종 이름·코드(예전 9종 이름 포함)가 아니면(없음 등) 카테고리 조건으로 쓰지 않습니다. ('기타'로 바꾸면 엉뚱하게 걸러짐)
+        legacy = categories.LEGACY.get(category) or categories.LEGACY.get(category.lower())
+        known = categories.BY_NAME.get(legacy) if legacy else categories.BY_CODE.get(category.lower())
         category = known.name if known else ""
     keyword = str(args.get("keyword") or "").strip()
     period_text = str(args.get("period") or "").strip()

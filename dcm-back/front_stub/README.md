@@ -14,7 +14,7 @@
 사용자  "가로등 민원 취소해 주세요"
   POST /api/v1/chat/message {text}                       (session_id 없이 → 새 세션)
 서버    state="awaiting_selection", reply="취소할 민원이 3건 있습니다. 어느 민원인가요? 1. … 2. … 3. …"
-        choices=[{no:1, complaint_id:37, label:"37번 민원 (국토교통 / …)"}, …]
+        choices=[{no:1, complaint_id:37, label:"37번 민원 (교통·국토 / …)"}, …]
 화면    reply 말풍선 + choices 버튼 표시
 
 사용자  (말로) "두 번째 거요"     또는   (버튼) 2번 버튼 클릭

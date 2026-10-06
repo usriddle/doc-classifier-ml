@@ -21,7 +21,7 @@ KeyBERT / kiwipiepy 가 없거나 실패하면 빈도 기반 폴백으로 내려
     1) 정해 둔 문구 패턴 (_BOILERPLATE)
     2) 명사가 없거나 일반 명사(_GENERIC_NOUNS)뿐인 짧은 문장
     안전장치: 카테고리 키워드가 들어간 문장은 남김 / 전부 걸리면 원문 그대로
-  ⑤ Qwen 입력·원문 저장은 바꾸지 않습니다. (이 모듈의 query_text 에만 적용)
+  ⑤ Gemma 입력·원문 저장은 바꾸지 않습니다. (이 모듈의 query_text 에만 적용)
 
 요약 기준 (SUMMARY_FULL_TEXT_CHARS, SUMMARY_KEEP_FIRST)
   상투 문구를 뺀 본문이 짧으면(기본 200자 이하) 요약하지 않고 전부 씁니다.

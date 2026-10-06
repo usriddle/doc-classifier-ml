@@ -1,5 +1,5 @@
 """
-⑤ Qwen 에게 주는 프롬프트 모음.
+⑤ Gemma 에게 주는 프롬프트 모음.
 
 KV 캐시(CAG) 대상인 고정 프리픽스
   - 역할 지시문
@@ -254,7 +254,7 @@ def category_labels(candidate_names: list[str], allow_none: bool = False) -> lis
 
 def build_category_prompt(user_text: str, candidate_names: list[str], allow_none: bool = False) -> str:
     """
-    카테고리 확정 - ④ 가 추린 후보(CANDIDATE_TOP_K 개, 기본 4) 중에서만 고릅니다.
+    카테고리 확정 - ④ 가 추린 후보(CANDIDATE_TOP_K 개, 기본 3) 중에서만 고릅니다.
 
     후보는 번호와 이름만 적습니다. 각 카테고리의 설명은 이미 고정 프리픽스의
     [카테고리 정의] 에 있으므로 여기서 반복하지 않습니다. (캐시 밖 토큰을 줄임)
@@ -293,7 +293,7 @@ def build_tool_prompt(user_text: str, intent: Intent, category_name: str) -> str
     )
 
 
-# Qwen 이 이 문구로 답하면 llm_engine 이 FAQ_FALLBACK_MESSAGE 로 바꿉니다.
+# Gemma 가 이 문구로 답하면 llm_engine 이 FAQ_FALLBACK_MESSAGE 로 바꿉니다.
 ANSWER_DECLINE_PHRASE = "확인이 어렵다"
 
 

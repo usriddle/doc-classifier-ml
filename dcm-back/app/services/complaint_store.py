@@ -2,7 +2,7 @@
 ⑥ 민원 DB (관계형).
 
 ⑤ 가 만든 도구 호출(register_complaint / get_complaints / update_complaint /
-cancel_complaint)을 실제로 실행하는 저장소입니다. Qwen 은 이 파일을 전혀 모르고,
+cancel_complaint)을 실제로 실행하는 저장소입니다. Gemma 는 이 파일을 전혀 모르고,
 "무엇을 어떤 값으로" 만 정할 뿐입니다 - 실행은 tool_executor.py 가 이 모듈의
 함수를 호출해서 합니다.
 
@@ -119,7 +119,7 @@ def _row_to_complaint(row: sqlite3.Row) -> Complaint:
 def register(user_id: str, category: str, content: str, location: str = "") -> Complaint:
     """
     새 민원을 등록합니다. 중복을 허용하므로 같은 내용이어도 그대로 새 행을 만듭니다.
-    category 가 7종에 없으면 categories.get() 이 '기타'로 대체합니다. (예외를 던지지 않음)
+    category 가 7종에 없으면 categories.get() 이 '기타'로 대체합니다. (예외를 던지지 않음. 예전 9종 이름은 지금 이름으로 바꿔 받음)
     """
     cat_name = categories.get(category).name
     text = (content or "").strip() or "(내용 없음)"

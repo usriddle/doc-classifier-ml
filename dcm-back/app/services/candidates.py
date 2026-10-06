@@ -1,17 +1,17 @@
 """
-④ 후보 추림 - 코사인 유사도 top-4. (개수는 .env 의 CANDIDATE_TOP_K)
+④ 후보 추림 - 코사인 유사도 top-3. (개수는 .env 의 CANDIDATE_TOP_K)
 
 ③ 에서 만든 질의 벡터(키워드3개+요약문)와 7종 카테고리 정의문 벡터의
-코사인 유사도를 계산해 상위 4개를 고릅니다. 학습하지 않습니다.
+코사인 유사도를 계산해 상위 3개를 고릅니다. 학습하지 않습니다.
 
-여기서 고른 4개만 ⑤ Qwen 에게 넘어가고, Qwen 이 그 중 하나를 확정합니다.
+여기서 고른 3개만 ⑤ Gemma 에게 넘어가고, Gemma 가 그 중 하나를 확정합니다.
 (7종 전체를 넘기지 않으므로 프롬프트가 짧아지고 판정이 안정적입니다)
 
 카테고리 벡터는 최초 1회 계산해 메모리에 캐시합니다.
 
 점수 계산 방식 (.env 의 CANDIDATE_SCORING)
   single : 카테고리마다 정의문(설명 + 키워드 전체) 벡터 1개와 비교합니다.
-           주제가 많은 카테고리(행정안전 = 서류·재난·방범·과태료·선거 …)는 벡터가 여러 주제의
+           주제가 많은 카테고리(문화·행정·안전 = 서류·재난·소방·도서관·축제 …)는 벡터가 여러 주제의
            평균이 되어 어느 주제와도 가깝지 않게 되는 약점이 있습니다.
   multi  : 정의문 벡터 + 키워드 하나하나의 벡터 중 가장 가까운 것의 점수를 씁니다.
            "방범 CCTV" 같은 개별 주제와 직접 비교하므로 평균 효과가 줄어듭니다.
@@ -53,7 +53,7 @@ class CategoryScore:
 class CandidateResult:
     """④ 결과."""
 
-    top: list[CategoryScore] = field(default_factory=list)      # 상위 CANDIDATE_TOP_K 개 (Qwen 입력)
+    top: list[CategoryScore] = field(default_factory=list)      # 상위 CANDIDATE_TOP_K 개 (Gemma 입력)
     all_scores: list[CategoryScore] = field(default_factory=list)  # 7종 전체 (DEBUG 확인용)
     query_vector: np.ndarray | None = None
     low_confidence: bool = False   # 1위 점수가 임계값 미만. 참고용 표시일 뿐 반려 기준 아님

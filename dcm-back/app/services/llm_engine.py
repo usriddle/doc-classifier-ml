@@ -1,12 +1,13 @@
 """
-⑤ Qwen3.5-4B (+ QLoRA 어댑터) 판정 엔진.
+⑤ Gemma 4 E4B (google/gemma-4-E4B-it, + QLoRA 어댑터) 판정 엔진.
+(Ollama 의 gemma4:e4b 와 같은 모델. 학습·번호 토큰 판정에 로짓이 필요해 transformers 로 직접 올립니다)
 
 파이프라인에서 유일하게 학습·파인튜닝 대상인 모델입니다.
 한 요청에서 다음 세 가지를 순서대로 처리합니다.
 
   1) 의도 판정      - "의도: " 뒤에 올 번호 토큰(1~6)의 확률을 forward 1회로 계산
                       (1~5 = 문의/접수/조회/수정/삭제, 6 = 해당없음 -> 게이트 반려)
-  2) 카테고리 확정  - ④ 가 추린 후보 4개 중 번호 토큰(1~4, 조회·수정·삭제는 5=없음) 확률을 forward 1회로 계산
+  2) 카테고리 확정  - ④ 가 추린 후보 3개 중 번호 토큰(1~3, 조회·수정·삭제는 4=없음) 확률을 forward 1회로 계산
   3) 도구 호출 JSON - generate 로 JSON 을 생성 (의도가 '문의'면 안내 문장을 생성)
 
 1)2) 는 자유 생성이 아니라 "번호 토큰 1회 계산"입니다.
@@ -18,7 +19,8 @@
 로드 방식
   - CUDA + bitsandbytes 가 있으면 4bit NF4 (QLoRA 와 같은 양자화 설정)
     * 연산 dtype 은 GPU 에 맞춰 고릅니다. T4(Turing)는 bfloat16 이 없으므로 float16.
-    * 4B 모델도 4bit 면 약 2.5GB 라 Colab T4(16GB)에 bge-m3 와 함께 올라갑니다.
+    * Gemma 4 E4B 는 선형층(유효 4.5B)만 4bit 가 되고, 층별 임베딩(PLE)·입력 임베딩은
+      bitsandbytes 가 양자화하지 않아 16bit 로 남습니다. 4bit 로 올려도 VRAM 약 9~10GB 입니다.
   - 그 외에는 CPU float32 로 올립니다. 4B 는 CPU 에서 매우 느리니 테스트용으로만 쓰세요.
   - .env 의 LLM_ADAPTER_PATH 에 경로를 넣으면 PEFT 로 LoRA 어댑터를 얹습니다.
 
@@ -28,10 +30,16 @@ KV 캐시(CAG)
   처음 만들 때 캐시 사용/미사용 결과가 같은지 검증하고, 문제가 있으면 스스로 꺼집니다.
 
 사고(thinking) 모드
-  Qwen3.5 는 기본이 사고 모드라 답 앞에 <think>...</think> 를 먼저 씁니다.
+  Gemma 4 는 채팅 템플릿에 enable_thinking=True 를 주면 답 앞에
+  <|channel>thought ... <channel|> 사고 블록을 먼저 씁니다.
   의도/카테고리 판정은 "다음 토큰 1개"만 보므로 사고 모드가 켜져 있으면
-  그 1개가 <think> 가 되어 판정이 깨집니다. 그래서 채팅 템플릿에
+  그 1개가 사고 블록 시작 토큰이 되어 판정이 깨집니다. 그래서 채팅 템플릿에
   enable_thinking=False 를 넘겨 끕니다. (.env 의 LLM_ENABLE_THINKING)
+  (Qwen 계열의 <think>...</think> 도 같은 함수가 걷어 냅니다)
+
+Gemma 4 채팅 템플릿
+  <bos><|turn>system\n{고정 프리픽스}<turn|>\n<|turn>user\n{요청}<turn|>\n<|turn>model\n
+  발화 끝 토큰은 <turn|> 입니다. 학습 정답 끝에 붙이고 생성도 여기서 멈춥니다.
 """
 
 from __future__ import annotations
@@ -131,12 +139,19 @@ def load_base_model():
     device = runtime.resolve_device()
     four_bit = runtime.use_4bit()
     logger.info(
-        "Qwen 로드 시작 | model=%s | device=%s | 4bit=%s | compute_dtype=%s | thinking=%s "
+        "판정 모델 로드 시작 | model=%s | device=%s | 4bit=%s | compute_dtype=%s | thinking=%s "
         "(첫 실행이면 가중치를 내려받습니다)",
         settings.LLM_MODEL, device, four_bit,
         str(runtime.compute_dtype() if four_bit else runtime.torch_dtype()).replace("torch.", ""),
         settings.LLM_ENABLE_THINKING,
     )
+
+    if four_bit and "gemma" in settings.LLM_MODEL.lower() and not runtime.supports_bf16():
+        # Gemma 계열은 bfloat16 으로 학습된 모델이라 float16 연산에서 활성값이 넘쳐 inf/nan 이 날 수 있습니다.
+        logger.warning(
+            "Gemma 를 float16 으로 올립니다(T4 등 bfloat16 미지원 GPU). 판정이 이상하거나 학습 loss 가 nan 이면 "
+            "L4·A100 같은 bfloat16 지원 GPU 를 쓰세요."
+        )
 
     trust = bool(getattr(settings, "LLM_TRUST_REMOTE_CODE", False))
     tokenizer = AutoTokenizer.from_pretrained(
@@ -199,13 +214,13 @@ def get_model():
             raise
         except Exception as exc:
             _load_error = f"{type(exc).__name__}: {exc}"
-            logger.exception("Qwen 로드 실패 | model=%s", settings.LLM_MODEL)
+            logger.exception("판정 모델 로드 실패 | model=%s", settings.LLM_MODEL)
             raise ModelUnavailableError(
-                "판정 모델(Qwen) 로드에 실패했습니다.",
+                "판정 모델 로드에 실패했습니다.",
                 detail=_load_error if settings.DEBUG else None,
             ) from exc
 
-        logger.info("Qwen 로드 완료 | %.1fs", time.perf_counter() - started)
+        logger.info("판정 모델 로드 완료 | %.1fs", time.perf_counter() - started)
         _bundle = (tokenizer, model)
         _load_error = None
         return _bundle
@@ -309,11 +324,12 @@ def _load_weights(auto_cls, kwargs: dict):
     가중치 로드. 두 가지 호환 문제를 여기서 흡수합니다.
 
     1) transformers 최신판은 torch_dtype 대신 dtype 을 받습니다. (TypeError 시 재시도)
-    2) Qwen3.5 체크포인트는 비전 인코더가 붙은 멀티모달 구조입니다.
-       설치된 transformers 가 이 config 를 AutoModelForCausalLM 에 연결해 두지 않았으면
+    2) Gemma 4 체크포인트는 비전·오디오 인코더가 붙은 멀티모달 구조입니다.
+       transformers 5.5 이상은 AutoModelForCausalLM 이 Gemma4ForConditionalGeneration 을 올립니다.
+       예전 판처럼 이 config 를 AutoModelForCausalLM 에 연결해 두지 않았으면
        "Unrecognized configuration class" ValueError 가 나므로, 그때는
        AutoModelForImageTextToText 로 다시 올립니다. 텍스트만 넣어도 로짓·generate 가
-       똑같이 동작하므로 ⑤ 의 판정 로직은 바뀌지 않습니다.
+       똑같이 동작하므로 ⑤ 의 판정 로직은 바뀌지 않습니다. (LoRA 는 언어 모델 쪽에만 붙음)
     """
     def _from_pretrained(cls):
         try:
@@ -353,7 +369,8 @@ def _load_weights(auto_cls, kwargs: dict):
 # 프리픽스 구간 토큰(약 1천~2천 개)을 매번 다시 계산하지 않으므로 ⑤ 가 빨라집니다.
 #
 # 캐시는 forward 때마다 그 자리에서 늘어나므로 요청마다 deepcopy 한 복사본을 씁니다.
-# (Qwen3.5 는 일부 층이 선형 어텐션이라 늘어난 캐시를 잘라내(crop) 되돌릴 수 없습니다)
+# (Gemma 4 는 슬라이딩 윈도우(512토큰) 층과 전체 어텐션 층이 섞여 있어, 늘어난 캐시를
+#  잘라내(crop) 되돌리는 것보다 복사본을 쓰는 쪽이 안전합니다)
 #
 # 안전장치
 #   - 처음 만들 때 같은 입력을 캐시 사용/미사용으로 한 번씩 계산해 결과가 같은지 검증합니다.
@@ -377,13 +394,14 @@ def render_template(tokenizer, user_content: str) -> str:
     ]
     kwargs: dict = {"tokenize": False, "add_generation_prompt": True}
     try:
-        # Qwen3.5 는 기본이 사고 모드입니다. 끄면 템플릿이 빈 <think></think> 를 채워 넣어
-        # 생성 첫 토큰이 곧바로 우리가 원하는 번호가 됩니다.
+        # enable_thinking=False 면 Gemma 4 템플릿은 사고 지시(<|think|>)를 넣지 않습니다.
+        # (모델에 따라 빈 사고 블록을 생성 프롬프트에 미리 채워 넣기도 하는데, 그 경우에도
+        #  template_parts() 가 그 부분까지 뒷부분으로 잘라 가므로 학습·추론이 똑같습니다)
         return tokenizer.apply_chat_template(
             messages, enable_thinking=settings.LLM_ENABLE_THINKING, **kwargs
         )
     except TypeError:
-        # enable_thinking 을 모르는 템플릿(Qwen2.5 등)은 그냥 넘어갑니다.
+        # enable_thinking 을 모르는 템플릿은 그냥 넘어갑니다.
         return tokenizer.apply_chat_template(messages, **kwargs)
 
 
@@ -598,13 +616,13 @@ def number_token_ids(tokenizer, count: int) -> list[int]:
     return ids
 
 
-_TURN_END_TOKENS = ("<|im_end|>", "<|eot_id|>", "<end_of_turn>", "<|end|>", "[|endofturn|]", "<|endofturn|>")
+_TURN_END_TOKENS = ("<turn|>", "<end_of_turn>", "<|im_end|>", "<|eot_id|>", "<|end|>", "[|endofturn|]", "<|endofturn|>")
 
 
 def turn_end_token_id(tokenizer) -> int:
     """
     어시스턴트 발화를 닫는 토큰. 학습 정답 끝에 붙이고, 생성도 여기서 멈춥니다.
-    Qwen <|im_end|> · Llama 3 <|eot_id|> · Gemma <end_of_turn> · Phi <|end|> · EXAONE [|endofturn|]
+    Gemma 4 <turn|> · Gemma 2/3 <end_of_turn> · Qwen <|im_end|> · Llama 3 <|eot_id|> · Phi <|end|> · EXAONE [|endofturn|]
     목록에 없는 모델은 eos 토큰을 씁니다.
     """
     unk = getattr(tokenizer, "unk_token_id", None)
@@ -708,13 +726,97 @@ def _generate(prompt: str, max_new_tokens: int) -> str:
             generated = model.generate(**gen_kwargs)
 
     new_tokens = generated[0][ids.shape[1]:]
-    decoded = tokenizer.decode(new_tokens, skip_special_tokens=True)
-    return strip_thinking(decoded).strip()
+    return clean_output(tokenizer, new_tokens)
 
 
-# <think> ... </think> 사고 블록. LLM_ENABLE_THINKING=true 일 때만 나옵니다.
-_THINK_BLOCK = re.compile(r"<think>.*?</think>", re.DOTALL)
-_OPEN_THINK = re.compile(r"^.*?</think>", re.DOTALL)
+def clean_output(tokenizer, new_tokens) -> str:
+    """
+    생성 토큰 -> 사람이 읽을 문자열.
+
+    특수 토큰을 먼저 지우면(skip_special_tokens=True) Gemma 4 사고 블록의 표지
+    (<|channel>, <channel|>)만 사라지고 사고 내용이 답에 섞이므로,
+    특수 토큰을 남긴 채 디코드 -> 사고 블록 제거 -> 남은 특수 토큰 제거 순서로 합니다.
+    """
+    raw = tokenizer.decode(new_tokens, skip_special_tokens=False)
+    text = gemma_tool_calls_to_json(strip_thinking(raw))
+    return remove_special_tokens(tokenizer, text).strip()
+
+
+# --- Gemma 4 고유의 도구 호출 형식 ---------------------------------------------------
+#   <|tool_call>call:register_complaint{content:<|"|>가로등 꺼짐<|"|>,location:<|"|>행복로<|"|>}<tool_call|>
+# 문자열 값은 <|"|> 로 감싸고, 키에는 따옴표가 없습니다.
+# 판정 프롬프트는 일반 JSON 을 요구하지만, 베이스 모델이 습관적으로 이 형식을 쓰는 경우가 있어
+# {"name": ..., "arguments": {...}} JSON 으로 바꿔 둡니다. (대화 에이전트도 같은 함수를 씀)
+_GEMMA_CALL = re.compile(r"<\|tool_call>\s*call:([\w.\-]+)\s*(\{.*?\})\s*<tool_call\|>", re.DOTALL)
+_GEMMA_STR = re.compile(r'<\|"\|>(.*?)<\|"\|>', re.DOTALL)
+_BARE_KEY = re.compile(r'([{,]\s*)([A-Za-z_][\w\-]*)\s*:')
+
+
+def parse_gemma_arguments(body: str) -> dict | None:
+    """'{key:<|"|>값<|"|>,n:2}' -> {"key": "값", "n": 2}. 읽을 수 없으면 None."""
+    strings: list[str] = []
+
+    def keep(match: re.Match) -> str:
+        strings.append(match.group(1))
+        return f"\x00{len(strings) - 1}\x00"
+
+    text = _GEMMA_STR.sub(keep, body.strip())
+    text = _BARE_KEY.sub(lambda m: f'{m.group(1)}"{m.group(2)}":', text)
+    text = re.sub(r"\x00(\d+)\x00", lambda m: json.dumps(strings[int(m.group(1))], ensure_ascii=False), text)
+    try:
+        value = json.loads(text)
+    except ValueError:
+        return None
+    return value if isinstance(value, dict) else None
+
+
+def gemma_tool_calls(text: str) -> list[tuple[str, dict]]:
+    """출력에 들어 있는 Gemma 4 도구 호출 (이름, 인자) 목록."""
+    calls = []
+    for name, body in _GEMMA_CALL.findall(text or ""):
+        args = parse_gemma_arguments(body)
+        if args is not None:
+            calls.append((name, args))
+    return calls
+
+
+def gemma_tool_calls_to_json(text: str, wrap: str = "") -> str:
+    """
+    Gemma 4 도구 호출을 {"name": ..., "arguments": ...} JSON 문자열로 바꿉니다. (없으면 그대로)
+    wrap="nous" 면 Qwen-Agent 가 읽는 <tool_call>\\n{json}\\n</tool_call> 로 감쌉니다.
+    """
+    if "<|tool_call>" not in (text or ""):
+        return text
+
+    def convert(match: re.Match) -> str:
+        args = parse_gemma_arguments(match.group(2))
+        if args is None:
+            return match.group(0)
+        call = json.dumps({"name": match.group(1), "arguments": args}, ensure_ascii=False)
+        return f"<tool_call>\n{call}\n</tool_call>" if wrap == "nous" else call
+
+    return _GEMMA_CALL.sub(convert, text)
+
+
+def special_token_strings(tokenizer) -> list[str]:
+    """토크나이저의 특수 토큰 문자열 (긴 것부터)."""
+    found = set(getattr(tokenizer, "all_special_tokens", None) or [])
+    for tok in (getattr(tokenizer, "added_tokens_decoder", None) or {}).values():
+        if getattr(tok, "special", False) and getattr(tok, "content", ""):
+            found.add(tok.content)
+    return sorted((t for t in found if t), key=len, reverse=True)
+
+
+def remove_special_tokens(tokenizer, text: str) -> str:
+    for tok in special_token_strings(tokenizer):
+        text = text.replace(tok, "")
+    return text
+
+
+# 사고 블록. LLM_ENABLE_THINKING=true 일 때만 나옵니다.
+#   Gemma 4 : <|channel>thought ... <channel|>      Qwen 계열 : <think> ... </think>
+_THINK_BLOCK = re.compile(r"<think>.*?</think>|<\|channel>.*?<channel\|>", re.DOTALL)
+_OPEN_THINK = re.compile(r"^.*?(?:</think>|<channel\|>)", re.DOTALL)
 
 _JSON_BLOCK = re.compile(r"\{.*\}", re.DOTALL)
 
@@ -730,8 +832,11 @@ def strip_thinking(text: str) -> str:
     if not text:
         return ""
     cleaned = _THINK_BLOCK.sub("", text)
-    if "</think>" in cleaned:
+    if "</think>" in cleaned or "<channel|>" in cleaned:
         cleaned = _OPEN_THINK.sub("", cleaned, count=1)
+    if "<|channel>" in cleaned:
+        # 사고 블록이 닫히기 전에 생성 길이가 끝난 경우 - 남은 부분은 전부 사고 내용
+        cleaned = cleaned.split("<|channel>", 1)[0]
     return cleaned.strip()
 
 
@@ -856,12 +961,12 @@ def generate_answer(text: str, faqs: list[tuple[str, str]]) -> str:
 
 def answer_inquiry(text: str) -> tuple[str, FaqLookup]:
     """
-    '문의' 답변 전체 흐름. (FAQ 검색 -> 근거가 있으면 Qwen 답변, 없으면 고정 문구)
+    '문의' 답변 전체 흐름. (FAQ 검색 -> 근거가 있으면 모델 답변, 없으면 고정 문구)
 
       1. faq_store.lookup() 으로 질문과 비슷한 FAQ 를 고름
-      2. 기준(FAQ_MIN_SCORE)을 넘은 FAQ 가 없으면 Qwen 을 부르지 않고 FAQ_FALLBACK_MESSAGE
-      3. 있으면 그 FAQ 만 넣어 Qwen 이 답변
-      4. Qwen 이 '확인이 어렵다'고 답하면 FAQ_FALLBACK_MESSAGE 로 바꿈 (안내 문구를 한 가지로 통일)
+      2. 기준(FAQ_MIN_SCORE)을 넘은 FAQ 가 없으면 모델을 부르지 않고 FAQ_FALLBACK_MESSAGE
+      3. 있으면 그 FAQ 만 넣어 모델이 답변
+      4. 모델이 '확인이 어렵다'고 답하면 FAQ_FALLBACK_MESSAGE 로 바꿈 (안내 문구를 한 가지로 통일)
     """
     lookup = faq_store.lookup(text)
     if lookup.fallback:
@@ -870,7 +975,7 @@ def answer_inquiry(text: str) -> tuple[str, FaqLookup]:
     lookup.model_answer = answer
     if not answer or prompts.ANSWER_DECLINE_PHRASE in answer:
         lookup.model_declined = True
-        lookup.reason += " - Qwen 이 FAQ 로 답할 수 없다고 판단해 고정 문구로 바꿈"
+        lookup.reason += " - 모델이 FAQ 로 답할 수 없다고 판단해 고정 문구로 바꿈"
         return settings.FAQ_FALLBACK_MESSAGE, lookup
     return answer, lookup
 
@@ -885,7 +990,7 @@ def decide(user_text: str, candidate_names: list[str]) -> LlmResult:
     ⑤ 전체 판정.
 
     user_text        : ② 에서 추출한 원문 (길면 앞부분만 사용)
-    candidate_names  : ④ 가 추린 카테고리 후보 이름 (CANDIDATE_TOP_K 개, 기본 4)
+    candidate_names  : ④ 가 추린 카테고리 후보 이름 (CANDIDATE_TOP_K 개, 기본 3)
     """
     warnings: list[str] = []
     timings: dict[str, int] = {}
@@ -901,7 +1006,7 @@ def decide(user_text: str, candidate_names: list[str]) -> LlmResult:
     timings["intent_ms"] = int((time.perf_counter() - started) * 1000)
 
     # --- 해당없음(게이트) : 카테고리 확정·도구 호출을 생략하고 바로 반환 ---
-    # 5가지 의도 중 어디에도 해당하지 않는다고 Qwen 이 스스로 판단한 경우입니다.
+    # 5가지 의도 중 어디에도 해당하지 않는다고 모델이 스스로 판단한 경우입니다.
     # forward 1회(의도 판정)만 쓰고 이후 단계를 건너뛰므로 반려가 오히려 더 빠릅니다.
     if intent.code == "out_of_scope":
         return LlmResult(
@@ -916,8 +1021,8 @@ def decide(user_text: str, candidate_names: list[str]) -> LlmResult:
         )
 
     # --- 2) 카테고리 확정 ---
-    #   접수          : 후보 4개 중 선택
-    #   조회·수정·삭제 : 후보 4개 + 없음 중 선택 (주제를 특정할 수 없으면 없음 -> category_name "")
+    #   접수          : 후보 3개 중 선택
+    #   조회·수정·삭제 : 후보 3개 + 없음 중 선택 (주제를 특정할 수 없으면 없음 -> category_name "")
     #   문의          : 카테고리를 쓰지 않으므로 판정하지 않음
     category_name = ""
     category_choice = Choice(number=0, label="", score=0.0, scores={})
@@ -935,7 +1040,7 @@ def decide(user_text: str, candidate_names: list[str]) -> LlmResult:
     if intent.tool is None:
         # 그림의 '문의' 갈래 - 도구 호출 없음, DB 미사용. FAQ 검색(RAG) 후 답변
         answer, faq_lookup = answer_inquiry(text)
-        tool_call = ToolCall(called=False, raw=faq_lookup.model_answer)   # Qwen 원시 출력 (고정 문구면 빈 값)
+        tool_call = ToolCall(called=False, raw=faq_lookup.model_answer)   # 모델 원시 출력 (고정 문구면 빈 값)
     else:
         tool_call = generate_tool_call(text, intent, category_name, warnings)
     timings["tool_ms"] = int((time.perf_counter() - started) * 1000)

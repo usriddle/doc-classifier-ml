@@ -79,7 +79,7 @@ async def lifespan(app: FastAPI):
         logger.info("모델 프리로드 시작 - 가중치 다운로드에 수 분 걸릴 수 있습니다.")
         try:
             embedder.get_model()
-            llm_engine.warmup()          # Qwen 로드 + KV 캐시 prefill·검증
+            llm_engine.warmup()          # Gemma 로드 + KV 캐시 prefill·검증
             logger.info("모델 프리로드 완료")
         except Exception as exc:
             logger.warning("모델 프리로드 실패 - 첫 요청 때 다시 시도합니다 | %s", exc)
@@ -98,11 +98,11 @@ app = FastAPI(
     version=__version__,
     description=(
         "문서 인식 및 자동분류 통합시스템의 백엔드입니다.\n\n"
-        "**현재 구현 범위** — ① 입력 → ② 텍스트 추출 → ③ 임베딩 → ④ 후보 추림 → ⑤ Qwen 판정\n\n"
+        "**현재 구현 범위** — ① 입력 → ② 텍스트 추출 → ③ 임베딩 → ④ 후보 추림 → ⑤ Gemma 판정\n\n"
         "| 단계 | 내용 | 엔드포인트 |\n"
         "|---|---|---|\n"
         "| ①② | 파일에서 텍스트 추출 | `POST /api/v1/extract/text` |\n"
-        "| ②→⑤ | 키워드3개+요약 → bge-m3 → 후보 top-4 → Qwen 판정 | "
+        "| ②→⑤ | 키워드3개+요약 → bge-m3 → 후보 top-3 → Gemma 판정 | "
         "`POST /api/v1/analyze/text`, `POST /api/v1/analyze/file` |\n\n"
         "⑥ 민원 DB 와 ⑦ 사용자 응답은 아직 구현 범위가 아닙니다. "
         "⑤ 의 판정 결과는 `result_text` 에 텍스트로 정리되어 나옵니다.\n\n"

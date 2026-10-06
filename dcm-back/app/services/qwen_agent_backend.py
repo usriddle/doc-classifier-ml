@@ -1,20 +1,22 @@
 """
-Qwen-Agent 로 "어느 민원인가요?" 에 대한 사용자의 답을 해석합니다. (chat_agent.py 가 부름)
+Qwen-Agent(함수 호출 에이전트 프레임워크)로 "어느 민원인가요?" 에 대한 사용자의 답을 해석합니다. (chat_agent.py 가 부름)
+프레임워크 이름만 Qwen-Agent 이고, 실제로 말하는 모델은 llm_engine 이 올린 판정 모델(Gemma 4 E4B)입니다.
 
 이 모듈만 qwen-agent 패키지를 import 합니다. 설치되지 않은 환경(윈도우 추출 서버 등)에서는
 chat_agent.py 가 이 모듈을 불러오지 못한 것을 감지하고 규칙 기반 해석으로 대신합니다.
 
 구성
-  SharedQwenLLM   : Qwen-Agent 의 LLM 인터페이스(BaseFnCallModel). 모델을 새로 올리지 않고
-                    llm_engine 이 이미 올려 둔 Qwen(4bit + QLoRA 어댑터)을 그대로 씁니다.
+  SharedModelLLM  : Qwen-Agent 의 LLM 인터페이스(BaseFnCallModel). 모델을 새로 올리지 않고
+                    llm_engine 이 이미 올려 둔 판정 모델(4bit + QLoRA 어댑터)을 그대로 씁니다.
                     (Qwen-Agent 기본 'transformers' 타입은 모델을 따로 한 벌 더 올려 GPU 메모리가 두 배가 됨)
   도구 3개        : select_complaint / cancel_selection / start_new_request
   SelectionAgent  : Qwen-Agent 의 Agent. LLM 을 한 번 부르고, 도구 호출이 있으면 그 도구를 실행하고 끝냅니다.
                     (도구 결과를 보고 LLM 을 또 부르지 않음 - 사용자에게 보낼 문장은 서버 코드가 만듦)
 
 함수 호출 형식은 Qwen-Agent 의 'nous' 프롬프트(<tool_call>{"name": ..., "arguments": ...}</tool_call>)입니다.
-Qwen3.5 가 자기 형식(<function=이름><parameter=키>값</parameter></function>)으로 답하는 경우도
-SharedQwenLLM 이 nous 형식으로 바꿔 Qwen-Agent 에 넘깁니다.
+모델이 자기 고유 형식으로 답해도 SharedModelLLM 이 nous 형식으로 바꿔 Qwen-Agent 에 넘깁니다.
+  Gemma 4 : <|tool_call>call:이름{키:<|"|>값<|"|>}<tool_call|>   (llm_engine.gemma_tool_calls_to_json)
+  Qwen3.5 : <function=이름><parameter=키>값</parameter></function> (xml_tool_calls_to_nous)
 """
 
 from __future__ import annotations
@@ -41,7 +43,7 @@ _gen_lock = threading.Lock()   # 어댑터를 잠깐 끄는 동안(CHAT_AGENT_DI
 
 
 # =============================================================================
-# LLM - 이미 올라와 있는 Qwen 공유
+# LLM - 이미 올라와 있는 판정 모델 공유
 # =============================================================================
 _XML_CALL = re.compile(r"<function=([^>\s]+)>(.*?)</function>", re.S)
 _XML_PARAM = re.compile(r"<parameter=([^>\s]+)>(.*?)</parameter>", re.S)
@@ -49,7 +51,7 @@ _XML_PARAM = re.compile(r"<parameter=([^>\s]+)>(.*?)</parameter>", re.S)
 
 def xml_tool_calls_to_nous(text: str) -> str:
     """
-    Qwen3.5 고유의 도구 호출 형식을 Qwen-Agent nous 형식으로 바꿉니다. (이미 nous 형식이면 그대로)
+    Gemma 고유의 도구 호출 형식을 Qwen-Agent nous 형식으로 바꿉니다. (예전 모델 호환용) (이미 nous 형식이면 그대로)
 
       <tool_call>\\n<function=select_complaint>\\n<parameter=position>\\n2\\n</parameter>\\n</function>\\n</tool_call>
       -> <tool_call>\\n{"name": "select_complaint", "arguments": {"position": 2}}\\n</tool_call>
@@ -81,8 +83,27 @@ def _message_text(msg: Message) -> str:
     return "".join(item.text or "" for item in content if getattr(item, "text", None))
 
 
+_ROLE_MAP = {"function": "user", "tool": "user"}
+
+
+def _alternate(messages: list[dict]) -> list[dict]:
+    """
+    채팅 템플릿에 맞게 메시지를 정리합니다.
+    Gemma 계열 템플릿은 system 다음에 user / model 이 번갈아 나와야 하므로,
+    같은 역할이 연달아 오면 한 발화로 합치고 도구 결과(function)는 user 쪽으로 붙입니다.
+    """
+    out: list[dict] = []
+    for m in messages:
+        role = _ROLE_MAP.get(m["role"], m["role"])
+        if out and out[-1]["role"] == role and role != "system":
+            out[-1]["content"] = (out[-1]["content"] + "\n\n" + m["content"]).strip()
+        else:
+            out.append({"role": role, "content": m["content"]})
+    return out
+
+
 @register_llm("minwon_shared")
-class SharedQwenLLM(BaseFnCallModel):
+class SharedModelLLM(BaseFnCallModel):
     """Qwen-Agent LLM 인터페이스 - llm_engine 의 (tokenizer, model) 을 그대로 씁니다."""
 
     def __init__(self, cfg: dict | None = None):
@@ -99,9 +120,9 @@ class SharedQwenLLM(BaseFnCallModel):
         self.last_output = ""      # 디버그용 - 모델 원문 출력 (형식 변환 전)
 
     def render(self, messages: list[Message]) -> str:
-        """Qwen-Agent 가 도구 설명까지 붙여 만든 메시지를 Qwen 채팅 템플릿 문자열로."""
+        """Qwen-Agent 가 도구 설명까지 붙여 만든 메시지를 판정 모델의 채팅 템플릿 문자열로."""
         tokenizer, _ = llm_engine.get_model()
-        plain = [{"role": m.role, "content": _message_text(m)} for m in messages]
+        plain = _alternate([{"role": m.role, "content": _message_text(m)} for m in messages])
         kwargs = dict(tokenize=False, add_generation_prompt=True)
         try:
             return tokenizer.apply_chat_template(plain, enable_thinking=settings.LLM_ENABLE_THINKING, **kwargs)
@@ -132,7 +153,10 @@ class SharedQwenLLM(BaseFnCallModel):
         with _gen_lock, (model.disable_adapter() if disable else nullcontext()), torch.inference_mode():
             out = model.generate(**gen_kwargs)
         new_tokens = out[0, input_ids.shape[1]:]
-        return tokenizer.decode(new_tokens, skip_special_tokens=True)
+        # 특수 토큰을 남긴 채 디코드 -> 사고 블록 제거 -> Gemma 도구 호출을 nous 형식으로 -> 남은 특수 토큰 제거
+        raw = tokenizer.decode(new_tokens, skip_special_tokens=False)
+        text = llm_engine.gemma_tool_calls_to_json(llm_engine.strip_thinking(raw), wrap="nous")
+        return llm_engine.remove_special_tokens(tokenizer, text)
 
     def _chat_no_stream(self, messages: list[Message], generate_cfg: dict) -> list[Message]:
         prompt = self.render(messages)
@@ -146,15 +170,15 @@ class SharedQwenLLM(BaseFnCallModel):
         yield self._chat_no_stream(messages, generate_cfg)
 
 
-_llm: SharedQwenLLM | None = None
+_llm: SharedModelLLM | None = None
 _llm_lock = threading.Lock()
 
 
-def get_llm() -> SharedQwenLLM:
+def get_llm() -> SharedModelLLM:
     global _llm
     with _llm_lock:
         if _llm is None:
-            _llm = SharedQwenLLM()
+            _llm = SharedModelLLM()
         return _llm
 
 
@@ -276,3 +300,7 @@ def run(system_message: str, conversation: list[dict], choice_count: int) -> dic
         "raw": llm.last_output,
         "prompt": llm.last_prompt,
     }
+
+
+# 예전 이름 호환
+SharedQwenLLM = SharedModelLLM

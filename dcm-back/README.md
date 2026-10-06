@@ -1,7 +1,7 @@
 # Document AI Backend
 
-> **팀원용 빠른 안내** — Colab 에서 ⑤ 판정 모델(Qwen3.5-4B)을 학습시키는 방법은 바로 아래 **[0. Colab 에서 모델 학습하기](#0-colab-에서-모델-학습하기-팀원용)**,
-> Qwen 대신 다른 모델로 시험해 보려면 **[0-9. 다른 모델로 바꿔서 학습하기](#0-9-다른-모델로-바꿔서-학습하기)** 를 보세요.
+> **팀원용 빠른 안내** — Colab 에서 ⑤ 판정 모델(Gemma 4 E4B, `google/gemma-4-E4B-it` = Ollama 의 `gemma4:e4b`)을 학습시키는 방법은 바로 아래 **[0. Colab 에서 모델 학습하기](#0-colab-에서-모델-학습하기-팀원용)**,
+> Gemma 대신 다른 모델로 시험해 보려면 **[0-9. 다른 모델로 바꿔서 학습하기](#0-9-다른-모델로-바꿔서-학습하기)** 를 보세요.
 > 서버 구조·설치·API 설명은 1장부터 이어집니다.
 
 ---
@@ -23,7 +23,7 @@ LoRA 어댑터가 드라이브의 `backend/adapters/<이름>/` 에 저장됩니�
 | 구글 계정 | 드라이브 여유 공간 **1GB 이상** 권장 (코드·데이터 약 10MB + 캐시 + 어댑터 버전마다 수십~백수십 MB) |
 | `backend.zip` | 이 폴더 전체를 압축한 파일. `.env` 는 들어 있지 않습니다 (노트북이 자동으로 만듦) |
 | Colab | 무료도 되지만(T4) 학습이 끊기기 쉽습니다. **Colab Pro 의 L4** 를 권장합니다 (0-3 참고) |
-| Hugging Face 토큰 | Qwen3.5-4B 는 **필요 없음**. Llama·Gemma 같은 승인제 모델로 바꿀 때만 필요 (0-9) |
+| Hugging Face 토큰 | Gemma 4 E4B 는 Apache 2.0 이라 보통 **필요 없음**. 다운로드가 401/403 이면 0-9 의 토큰 설정을 하세요. Llama 같은 승인제 모델은 필요 |
 
 ### 0-2. 드라이브에 파일 올리기
 
@@ -59,7 +59,7 @@ LoRA 어댑터가 드라이브의 `backend/adapters/<이름>/` 에 저장됩니�
     ├── app/                       서버 코드 (학습·평가가 그대로 씀) ✅ 필수
     ├── training/                  학습 코드 ✅ 필수
     ├── data/
-    │   ├── train/records.jsonl    학습 정답 데이터 (4,643건) ✅
+    │   ├── train/records.jsonl    학습 정답 데이터 (5,058건, 카테고리마다 461~465건) ✅
     │   └── cases.csv              벡터DB 사례 (④ 후보 재정렬)
     ├── requirements.txt           ✅ 필수
     ├── requirements-model.txt     ✅ 필수
@@ -75,8 +75,8 @@ LoRA 어댑터가 드라이브의 `backend/adapters/<이름>/` 에 저장됩니�
 
 | GPU | 메모리 | 속도 (기본 설정 1,000 샘플 = 125 스텝) | 비고 |
 |---|---|---|---|
-| T4 (무료) | 16GB | 가장 느림. 학습만 몇 시간 | 무료는 사용 시간 제한·중간 끊김이 잦아 끝까지 가기 어렵습니다 |
-| **L4 (Pro)** | 24GB | 스텝당 약 22초 → 학습 약 45~50분 | **권장.** 컴퓨팅 단위를 시간당 약 1.7 정도 씀 |
+| T4 (무료) | 16GB | 가장 느림. 학습만 몇 시간 | **Gemma 4 학습에는 비권장** — bfloat16 이 없어 float16 으로 돌아 loss 가 `nan` 이 될 수 있고, 4bit 로도 모델만 약 9~10GB |
+| **L4 (Pro)** | 24GB | 1,000 샘플에 약 1시간 남짓 (참고: Gemma 4 v1 은 2,000 샘플·250스텝에 약 135분) | **권장.** bfloat16 지원. 컴퓨팅 단위를 시간당 약 1.7 정도 씀 |
 | A100 (Pro) | 40GB | L4 보다 빠름 | 컴퓨팅 단위를 가장 많이 씀 |
 
 학습 외에 **8단계(학습 전 평가)와 11단계(학습 후 평가)** 가 각각 평가셋 전부(약 700건) 기준 꽤 오래 걸립니다(L4 에서도 수십 분 이상).
@@ -93,14 +93,14 @@ LoRA 어댑터가 드라이브의 `backend/adapters/<이름>/` 에 저장됩니�
 | 2 | 설치 (5~10분) | 마지막에 `설치 완료`. 중간의 빨간 `pip's dependency resolver` 경고는 무시 |
 | 3 | **런타임 재시작** | `세션이 다운되었습니다` 알림 — **일부러 끊는 것**입니다 |
 | 3-1 | 재시작 후 경로·환경 확인 | `.env` 가 없으면 자동 생성. 마지막 줄 `문제 없음` |
-| 3-2 | 필수 파일 점검 | `필수 파일 모두 있음`, `records.jsonl` 4,643줄 |
+| 3-2 | 필수 파일 점검 | `필수 파일 모두 있음`, `records.jsonl` 5,058줄 |
 | 4 | 이번 학습 설정 | 처음에는 **기본값 그대로** (아래 0-5) |
 | 5 | 정답 데이터 검증·분할 | `검증 오류 0건` |
 | 6 | ④ 후보 계산 (bge-m3) | 처음 수 분~십수 분, 다음부터 캐시로 몇 초. `④ 놓침` 이 수십 건 이하 |
-| 6-1 · 6-2 | (선택) ④ 설정 측정·반영 | 기본값(`multi` · `low_confidence` · 0.65 · 0.2)이 이미 측정해서 고른 값이라 **건너뛰어도 됩니다** |
-| 7 | Qwen 올리기 + 학습 샘플 | 첫 실행은 다운로드 5~15분. `【학습 대상 ▶ … ◀】` 안에 정답과 끝 토큰만 |
+| 6-1 · 6-2 | (선택) ④ 설정 측정·반영 | 기본값(`multi` · `union` · 0.2)이 팀 기준값이라 **건너뛰어도 됩니다** |
+| 7 | Gemma 올리기 + 학습 샘플 | 첫 실행은 다운로드(약 16GB) 5~15분. `【학습 대상 ▶ … ◀】` 안에 정답과 끝 토큰(`<turn\|>`)만 |
 | 8 | 학습 전 기준선 평가 | 지표 표 (비교 출발점) |
-| 9 | LoRA 붙이기 | `visual`·`vision` 이름이 없어야 함 |
+| 9 | LoRA 붙이기 | `q_proj` … `down_proj` 7종만. `vision`·`audio` 이름이 없어야 함 |
 | 10 | **학습** | loss 그래프가 내려가다 완만해짐. 남은 시간 표시 |
 | 11 | 학습 후 평가·판정 | `판정: 성공` 또는 `보류 - 이유` |
 | 12 | 저장 · 버전 비교 | `저장 완료: adapters/<이름>` |
@@ -108,7 +108,7 @@ LoRA 어댑터가 드라이브의 `backend/adapters/<이름>/` 에 저장됩니�
 | 13 | **런타임 재시작 후** 운영 경로로 재확인 | `mismatches: []`, 판정(운영 경로)과 판정(학습 세션)이 같음 |
 
 **런타임이 끊겼을 때** (오래 자리를 비움, 메모리 부족 등): 설치는 대부분 남아 있으므로 **3-1 부터** 다시 실행하면 됩니다.
-`ModuleNotFoundError` 나 `KeyError: 'qwen3_5'` 가 나면 세션이 새로 할당된 것이니 **2 → 3 → 3-1** 순서로 다시 하세요.
+`ModuleNotFoundError` 나 `KeyError: 'gemma4'` 가 나면 세션이 새로 할당된 것이니 **2 → 3 → 3-1** 순서로 다시 하세요.
 `Transport endpoint is not connected` 는 드라이브 연결이 끊긴 것 — 런타임 → 세션 다시 시작 후 3-1 부터.
 
 ### 0-5. 4단계 설정 — 무엇을 바꿔 볼까
@@ -120,11 +120,12 @@ LoRA 어댑터가 드라이브의 `backend/adapters/<이름>/` 에 저장됩니�
 | `RUN_NAME` | `''` (자동 `v번호_날짜`) | 구분하고 싶으면 `v5_lr1e4` 처럼. **`v` 로 시작**해야 13단계가 자동으로 찾습니다 |
 | `TRAIN_SAMPLE_LIMIT` | 1000 | 학습 시간이 거의 비례. 본 학습은 `None`(전부, 약 4천~5천 개 → L4 에서 3~4시간) |
 | `EVAL_LIMIT` | None | 시험 삼아 돌릴 때 300 |
-| `learning_rate` | 2e-4 | loss 가 튀거나 `nan` → 1e-4 |
-| `epochs` | 1 | 데이터를 전부 쓸 때 2~3 |
+| `learning_rate` | 1e-4 | Gemma v1(2e-4)에서 과적합·튐이 있어 낮춤 (0-7-1). loss 가 거의 안 줄면 2e-4 |
+| `epochs` | 1 | 데이터를 전부 쓸 때 2. 조기 종료(`early_stopping_patience=3`)가 있어 넘치면 알아서 멈춤 |
 | `MIX` | 도구 0.6 / 의도 0.2 / 카테고리 0.2 | 학습 후 의도·카테고리 정확도가 떨어지면 의도·카테고리 비중을 올리기 |
 | `NONE_BOOST` | 3 | `카테고리 없음 재현율` 이 낮으면 올리기 |
-| `gradient_checkpointing` | True | **끄지 마세요** — L4 에서도 메모리 부족이 났습니다 (A100 에서만 시도) |
+| `lora_dropout` · `warmup_ratio` · `evals_per_epoch` | 0.1 · 0.1 · 8 | 0-7-1 의 v1 분석으로 정한 값 |
+| `gradient_checkpointing` | True | **끄지 마세요** — Gemma 4 는 어휘 26만 개·층별 임베딩 때문에 메모리를 많이 씁니다 (A100 에서만 시도) |
 | `CHECKPOINT_TO_DRIVE` | False | 오래 걸리는 학습(전부 사용)이면 True — 끊겨도 `RESUME=True` + 같은 `RUN_NAME` 으로 이어서 |
 
 ### 0-6. 데이터를 고쳐서 다시 학습할 때
@@ -141,6 +142,26 @@ LoRA 어댑터가 드라이브의 `backend/adapters/<이름>/` 에 저장됩니�
 - **`보류`** 면 11단계 아래의 **틀린 사례 표**를 먼저 보세요. 같은 유형이 몰려 있으면 그 유형의 데이터를 보강하는 게 가장 효과적입니다.
 - 10단계 그래프보다 **11단계 전후 비교표가 기준**입니다. loss 는 과제마다 크기가 달라 모양이 들쭉날쭉할 수 있습니다.
 - 버전별 비교는 12단계 아래 **버전 비교 표** (판정·베이스 모델·주요 지표·`프롬프트 일치`).
+
+### 0-7-1. Gemma 4 E4B 첫 학습(v1) 그래프 분석과 지금 기본값
+
+첫 Gemma 학습은 `learning_rate=2e-4`, `warmup_ratio=0.05`, `lora_dropout=0.05`, `evals_per_epoch=4`, 1 epoch 이었고
+결과는 250스텝(약 2,000 샘플), 135분, **학습 loss 0.027 / 검증 loss 0.103 (최저 0.082 @ step 124)** 였습니다.
+
+| 그래프에서 보인 것 | 뜻 | 바꾼 값 (지금 기본값) |
+|---|---|---|
+| 검증 loss 가 step 124(절반 지점)에서 최저 0.082, 그 뒤 0.10 으로 다시 오름. 학습 loss 는 0.03 까지 계속 내려감 | **후반 절반은 과적합** — 학습 데이터만 외우고 일반화는 나빠짐 | `learning_rate` 2e-4 → **1e-4**, `lora_dropout` 0.05 → **0.1** |
+| 학습률이 아직 최고치 근처(약 1.9e-4)이던 step 50~75 에서 이동평균이 0.15 → 0.35 로 다시 오르고, step 55 에 1.25 짜리 튐 | 학습률이 이 모델에 높음 / 워밍업(약 13스텝)이 짧아 초반부터 큰 학습률로 감 | `warmup_ratio` 0.05 → **0.1** (약 25스텝) |
+| 검증을 62스텝마다 4번만 잼 | 실제 최저점이 90~160 사이 어디인지 모름. `load_best_model_at_end` 가 고를 후보가 4개뿐 | `evals_per_epoch` 4 → **8** |
+| 최저점 뒤 125스텝(약 65분)을 더 돌았지만 쓸모없음 | 시간 낭비 | `early_stopping_patience` = **3** (검증 3번 연속 최저 기록을 못 깨면 멈춤) |
+| 학습 loss 가 0.03~0.5 사이로 계속 들쭉날쭉 | 의도·카테고리 샘플은 정답이 토큰 1개라, 한 번 틀리면 loss 가 크게 튐. 도구 JSON 샘플과 섞여 생기는 정상적인 모양 | 그대로 (이동평균과 검증 loss 로 판단) |
+
+- `epochs` 는 1 그대로입니다. 학습률을 절반으로 낮췄으므로 최저점이 epoch 후반으로 밀릴 수 있고, 넘어가면 조기 종료가 멈춰 줍니다.
+- 최종 어댑터는 항상 **검증 loss 최저 체크포인트**입니다 (`load_best_model_at_end`). v1 도 step 124 의 어댑터가 저장된 것입니다.
+- 이 표는 loss 만 본 판단입니다. **11단계 전후 비교표**(의도·카테고리 정확도, keyword·location 일치, location 지어냄)가 최종 기준이니,
+  v2 를 돌린 뒤 두 버전을 12단계 버전 비교 표로 나란히 보세요.
+- 한 번에 하나만 바꾸라는 원칙과 달리 이번에는 네 값을 함께 바꿨습니다. 모두 "과적합·불안정을 줄이는" 같은 방향이라 묶었고,
+  v2 결과가 v1 보다 나쁘면 `learning_rate` 만 2e-4 로 되돌려 원인을 가르세요.
 
 ### 0-8. 결과를 팀과 공유하기
 
@@ -168,7 +189,7 @@ LoRA 어댑터가 드라이브의 `backend/adapters/<이름>/` 에 저장됩니�
 | 조건 | 이유 | 안 맞으면 |
 |---|---|---|
 | **대화형(Instruct / chat / `-it`) 모델** | 채팅 템플릿으로 프롬프트를 조립합니다 | base 모델은 템플릿이 없어 7단계에서 오류 |
-| 채팅 템플릿이 **system 역할**을 받음 | 고정 프리픽스(역할·도구·카테고리·의도 정의)를 system 에 넣습니다 | `System role not supported` 같은 오류 (예: Gemma 2. Gemma 3 는 가능) |
+| 채팅 템플릿이 **system 역할**을 받음 | 고정 프리픽스(역할·도구·카테고리·의도 정의)를 system 에 넣습니다 | `System role not supported` 같은 오류 (예: Gemma 2. Gemma 3·4 는 가능) |
 | 숫자 `1`~`6` 이 **각각 다른 토큰** | 의도·카테고리를 "다음 토큰 1개의 확률"로 고릅니다 | 7단계에서 `번호 토큰이 서로 겹칩니다` 오류 — 그 모델은 쓸 수 없음 |
 | transformers 가 지원 | `AutoModelForCausalLM` (안 되면 자동으로 `AutoModelForImageTextToText`) 으로 올립니다 | 저장소 자체 코드가 필요한 모델은 `LLM_TRUST_REMOTE_CODE=true` |
 | **4bit 로 GPU 에 들어가는 크기** | QLoRA 는 4bit 베이스 위에서 학습합니다 | 학습 중 `CUDA out of memory` |
@@ -186,10 +207,13 @@ LoRA 어댑터가 드라이브의 `backend/adapters/<이름>/` 에 저장됩니�
 
 | 모델 | 비고 |
 |---|---|
+| `google/gemma-4-E4B-it` | **지금 기본값.** 유효 4.5B(임베딩 포함 8B). 4bit 로 VRAM 약 9~10GB, bfloat16 GPU(L4·A100) 권장 |
+| `google/gemma-4-E2B-it` | 같은 세대의 작은 판. T4 에서 돌려야 하거나 더 빠른 응답이 필요할 때 |
+| `Qwen/Qwen3.5-4B` | 예전 기본값. 4bit 로 약 2.5GB 라 T4 에도 넉넉함. 사고 모드가 있어 `LLM_ENABLE_THINKING=false` 그대로 |
 | `Qwen/Qwen3-4B`, `Qwen/Qwen3-8B` | Qwen3.5 이전 세대. 사고 모드가 있어 `LLM_ENABLE_THINKING=false` 그대로 |
 | `Qwen/Qwen2.5-7B-Instruct` | 사고 모드 없음 |
 | `LGAI-EXAONE/EXAONE-3.5-2.4B-Instruct`, `…-7.8B-Instruct` | 한국어 특화. 3.5 판은 `LLM_TRUST_REMOTE_CODE=true` 필요. 라이선스(비상업) 확인 |
-| `google/gemma-3-4b-it` | **승인제** — 아래 토큰 설정 필요 |
+| `google/gemma-3-4b-it` | **승인제** — 아래 토큰 설정 필요. 발화 끝 토큰은 `<end_of_turn>` |
 | `meta-llama/Llama-3.1-8B-Instruct` | **승인제**. 한국어 토큰 효율이 낮아 입력이 길어지고 느림 |
 
 #### 바꾸는 순서
@@ -207,7 +231,7 @@ LoRA 어댑터가 드라이브의 `backend/adapters/<이름>/` 에 저장됩니�
    LLM_TRUST_REMOTE_CODE=false           # EXAONE 3.5 처럼 자체 코드가 필요한 모델만 true
    LLM_ENABLE_THINKING=false             # 그대로 (사고 모드가 없는 모델은 무시됨)
    LLM_LOAD_4BIT=true                    # 그대로
-   LLM_ADAPTER_PATH=                     # 반드시 비우기 - Qwen 으로 학습한 어댑터는 다른 모델에 못 얹습니다
+   LLM_ADAPTER_PATH=                     # 반드시 비우기 - Gemma 로 학습한 어댑터는 다른 모델에 못 얹습니다
    ```
 
    `.env` 가 아직 없으면 노트북 3-1 을 한 번 실행하면 만들어집니다. 그 뒤 고치세요.
@@ -216,17 +240,17 @@ LoRA 어댑터가 드라이브의 `backend/adapters/<이름>/` 에 저장됩니�
 3. **런타임 → 세션 다시 시작 → 3-1 부터** 실행합니다. 3-1 출력의 `LLM_MODEL` 이 바꾼 이름인지 확인하세요.
    설정은 서버 코드를 불러올 때 한 번만 읽히므로, 재시작 없이 `.env` 만 고치면 반영되지 않습니다.
 
-4. **4단계 `RUN_NAME` 에 모델 이름을 넣으세요.** 예: `v1_qwen25_7b`, `v1_exaone24`. 버전 비교 표에서 구분하기 쉽습니다. (`v` 로 시작)
+4. **4단계 `RUN_NAME` 에 모델 이름을 넣으세요.** 예: `v1_gemma4e4b`, `v1_qwen25_7b`, `v1_exaone24`. 버전 비교 표에서 구분하기 쉽습니다. (`v` 로 시작)
 
 5. 단계별로 **다르게 보이는 것**
 
    | 단계 | 확인할 것 |
    |---|---|
    | 6 | 바뀌지 않음 (④ 는 bge-m3 라 모델과 무관, 캐시 그대로 씀) |
-   | 7 | `고정 프리픽스 길이` 가 토크나이저마다 다릅니다 (한국어 토큰 효율이 낮은 모델은 더 길고 느림). **`【학습 대상 ▶ … ◀】` 끝의 토큰이 그 모델의 발화 끝 토큰**인지 확인 — Qwen `<\|im_end\|>`, Llama 3 `<\|eot_id\|>`, Gemma `<end_of_turn>`, EXAONE `[\|endofturn\|]` |
+   | 7 | `고정 프리픽스 길이` 가 토크나이저마다 다릅니다 (한국어 토큰 효율이 낮은 모델은 더 길고 느림). **`【학습 대상 ▶ … ◀】` 끝의 토큰이 그 모델의 발화 끝 토큰**인지 확인 — Gemma 4 `<turn\|>`, Gemma 2·3 `<end_of_turn>`, Qwen `<\|im_end\|>`, Llama 3 `<\|eot_id\|>`, EXAONE `[\|endofturn\|]` |
    | 8 | 기준선 캐시 지문에 모델 이름이 들어 있어 **자동으로 새로 채점**합니다. 학습 전 점수 자체가 모델 비교의 첫 자료입니다 |
    | 8 | `KV 캐시` 의 `verified.same_choice` 가 False 거나 `disabled_reason` 이 있으면, 그 모델에서는 캐시가 자동으로 꺼진 것입니다. 결과는 맞고 느려질 뿐입니다 |
-   | 9 | `붙은 층 수` 와 층 이름이 모델마다 다릅니다. `visual`·`vision` 이 들어간 이름이 없으면 정상 |
+   | 9 | `붙은 층 수` 와 층 이름이 모델마다 다릅니다. `q_proj`~`down_proj` 가 있는 모델은 그 7종에만 붙고, `vision`·`audio` 가 들어간 이름이 없으면 정상 |
    | 10 | 메모리가 부족하면 더 작은 모델로 바꾸거나 `max_length` 를 줄이세요 |
    | 12 | `run_info.json` 의 `base_model` 에 모델 이름이 기록됩니다 |
 
@@ -234,7 +258,7 @@ LoRA 어댑터가 드라이브의 `backend/adapters/<이름>/` 에 저장됩니�
    11단계 **학습 후** 지표(특히 의도·카테고리 정확도, keyword·period 일치, location 지어냄)를 나란히 보세요.
    학습 시간과 8·11단계 채점 시간(= 응답 속도의 대략적인 비교)도 함께 적어 두면 좋습니다.
 
-7. **원래 Qwen 으로 돌아가려면** `.env` 를 `LLM_MODEL=Qwen/Qwen3.5-4B`, `LLM_TRUST_REMOTE_CODE=false` 로 되돌리고 세션 재시작.
+7. **기본 Gemma 로 돌아가려면** `.env` 를 `LLM_MODEL=google/gemma-4-E4B-it`, `LLM_TRUST_REMOTE_CODE=false` 로 되돌리고 세션 재시작.
    다른 모델로 학습한 어댑터를 서버에 쓰려면 서버 `.env` 의 `LLM_MODEL` 도 그 모델이어야 합니다.
 
 #### 그래도 안 될 때 고칠 곳
@@ -251,7 +275,7 @@ LoRA 어댑터가 드라이브의 `backend/adapters/<이름>/` 에 저장됩니�
 
 문서 인식 및 자동분류 통합시스템의 백엔드입니다.
 
-**현재 구현 범위** : ① 입력 → ② 텍스트 추출 → ③ 임베딩 → ④ 후보 추림 → ⑤ Qwen 판정 → ⑥ 민원 DB 실행
+**현재 구현 범위** : ① 입력 → ② 텍스트 추출 → ③ 임베딩 → ④ 후보 추림 → ⑤ Gemma 판정 → ⑥ 민원 DB 실행
 
 ```
 ① 입력 ──▶ ② 전처리(추출)          텍스트 / 이미지+텍스트 → 원문
@@ -260,10 +284,10 @@ LoRA 어댑터가 드라이브의 `backend/adapters/<이름>/` 에 저장됩니�
               │
            ③ 임베딩 bge-m3          문장 → 1024차원 벡터 (학습 없음)
               │
-           ④ 후보 추림               카테고리 7종과 코사인 유사도 → top-4
-              │   └ 벡터DB             라벨링된 사례로 top-4 재정렬 (data/cases.csv, CASE_MODE)
+           ④ 후보 추림               카테고리 7종과 코사인 유사도 → top-3
+              │   └ 벡터DB             라벨링된 사례로 top-3 재정렬 (data/cases.csv, CASE_MODE)
               │
-           ⑤ Qwen3.5-4B             의도 1개(+해당없음 게이트) / 후보 4개 중 카테고리 1개 / 도구 호출 JSON
+           ⑤ Gemma 4 E4B            의도 1개(+해당없음 게이트) / 후보 3개 중 카테고리 1개 / 도구 호출 JSON
               │
            ⑥ 민원 DB (SQLite)       도구 호출 실제 실행 - 규칙검사(소유권·상태) 통과 시 즉시 반영
               │
@@ -432,29 +456,30 @@ python -c "import bitsandbytes; print(bitsandbytes.__version__)"
 설치돼 있고 CUDA 가 보이면 `.env` 의 `LLM_LOAD_4BIT=true` 일 때 4bit NF4(QLoRA 와 같은 설정)로 로드합니다.
 `GET /api/v1/analyze/status` 의 `load_4bit` 값으로 확인합니다.
 
-**4단계) transformers 최신판 — Qwen3.5 를 못 알아볼 때만**
+**4단계) transformers 5.5 이상 — Gemma 4 를 못 알아볼 때**
 
-Qwen3.5 는 transformers 에 아키텍처가 들어간 지 얼마 되지 않아, PyPI 정식판이 모르는 경우가 있습니다.
-아래 오류가 나면 git 판으로 올리세요.
+Gemma 4 는 transformers **5.5.0** 에서 들어왔습니다. 그보다 낡은 판이 깔려 있으면 아래 오류가 납니다.
 
 ```
-KeyError: 'qwen3_5'
-ValueError: The checkpoint you are trying to load has model type `qwen3_5`
+KeyError: 'gemma4'
+ValueError: The checkpoint you are trying to load has model type `gemma4`
             but Transformers does not recognize this architecture
 ```
 
 ```bash
-python -m pip install --upgrade "git+https://github.com/huggingface/transformers.git"
+python -m pip install --upgrade "transformers>=5.5.0" "peft>=0.17" "accelerate>=1.0"
 
-# 확인
+# 확인 (gemma4 가 나오면 정상)
 python -c "import transformers; print(transformers.__version__)"
-python -c "from transformers import AutoConfig; print(AutoConfig.from_pretrained('Qwen/Qwen3.5-4B').model_type)"
+python -c "from transformers import AutoConfig; print(AutoConfig.from_pretrained('google/gemma-4-E4B-it').model_type)"
 ```
 
-### 1-5. Colab T4 에서 돌리기
+### 1-5. Colab 에서 돌리기 (L4 권장, T4 가능)
 
 **`colab_backend.ipynb`** 를 Colab 에서 [파일] > [노트북 업로드] 로 올리고 셀을 위에서부터 누르면 됩니다.
-Qwen3.5-4B 를 4bit 로 올리면 VRAM 약 2.5GB, bge-m3 약 1.2GB 로 T4(16GB)에 넉넉히 들어갑니다.
+Gemma 4 E4B 를 4bit 로 올리면 VRAM 약 9~10GB(선형층만 4bit, 층별 임베딩은 16bit), bge-m3 약 1.2GB 입니다.
+서버(추론)만이면 T4(16GB)에도 들어가지만, T4 는 bfloat16 이 없어 float16 으로 돌아 Gemma 에서는 값이 넘칠 수 있습니다.
+판정이 이상하면 L4 로 바꾸세요.
 
 | 셀 | 하는 일 |
 |---|---|
@@ -475,21 +500,22 @@ Qwen3.5-4B 를 4bit 로 올리면 VRAM 약 2.5GB, bge-m3 약 1.2GB 로 T4(16GB)�
 !grep -v "^torch" requirements-model.txt > /tmp/req_model.txt
 !pip install -q -r /tmp/req_model.txt                     # 모델 스택 (Colab 의 CUDA torch 유지)
 !pip install -q bitsandbytes                              # 4bit 양자화 (T4 에서 사실상 필수)
-!pip install -q --upgrade "git+https://github.com/huggingface/transformers.git"
+!pip install -q --upgrade "transformers>=5.5.0"           # Gemma 4 는 5.5 이상
 ```
 
-**T4 권장 `.env`** — 핵심은 앞의 세 줄입니다.
+**권장 `.env`** — 핵심은 앞의 네 줄입니다.
 
 ```bash
-LLM_LOAD_4BIT=true             # 끄면 fp16 으로 약 8GB - bge-m3 와 같이 올리면 위태롭습니다
-LLM_4BIT_COMPUTE_DTYPE=auto    # T4 는 bfloat16 이 없어 자동으로 float16. bfloat16 강제 시 느려집니다
-LLM_ENABLE_THINKING=false      # Qwen3.5 는 기본이 사고 모드 - 켜두면 의도/카테고리 판정이 깨집니다
+LLM_MODEL=google/gemma-4-E4B-it
+LLM_LOAD_4BIT=true             # 끄면 16bit 로 약 16GB - 들어가지 않습니다
+LLM_4BIT_COMPUTE_DTYPE=auto    # L4·A100 은 bfloat16, T4 는 float16(Gemma 는 넘칠 수 있음)
+LLM_ENABLE_THINKING=false      # 켜두면 사고 블록이 먼저 나와 의도/카테고리 판정이 깨집니다
 DEVICE=auto
 DEBUG=true
 PRELOAD_MODELS=true            # 기동이 느린 대신 첫 요청이 빨라집니다 (노트북 기본값은 false)
 
 # MODEL_CACHE_DIR : 비우면 세션 로컬 디스크(~/.cache/huggingface) - 드라이브 용량 걱정 없음,
-#                    런타임 끊기면 약 10GB 를 다시 받습니다. (노트북 기본값)
+#                    런타임 끊기면 약 18GB 를 다시 받습니다. (노트북 기본값)
 MODEL_CACHE_DIR=
 # 드라이브 용량에 여유가 있다면 이렇게 바꾸면 런타임이 끊겨도 다시 받지 않습니다.
 # MODEL_CACHE_DIR=/content/drive/MyDrive/hf_cache
@@ -650,14 +676,14 @@ SELECT category, count(*) FROM complaint_cases GROUP BY category ORDER BY 1;
 | 모델 | 단계 | 크기 |
 |---|---|---|
 | `BAAI/bge-m3` | ③ 임베딩 | 약 2.2GB |
-| `Qwen/Qwen3.5-4B` | ⑤ 판정 | 약 8GB (4bit 로 올리면 VRAM 약 2.5GB) |
+| `google/gemma-4-E4B-it` | ⑤ 판정 | 약 16GB (bf16 원본, 비전·오디오 인코더 포함. 4bit 로 올리면 VRAM 약 9~10GB) |
 
 미리 받아두려면 (인터넷 되는 곳에서 한 번만)
 
 ```bash
 python -m pip install huggingface_hub
 huggingface-cli download BAAI/bge-m3
-huggingface-cli download Qwen/Qwen3.5-4B
+huggingface-cli download google/gemma-4-E4B-it
 ```
 
 - 저장 위치를 바꾸려면 `.env` 의 `MODEL_CACHE_DIR` 을 지정하세요.
@@ -696,13 +722,14 @@ T4 라면 `runtime` 에 `load_4bit: true`, `supports_bf16: false`, `compute_dtyp
 | `ImportError: libGL.so.1` (Linux) | opencv 의존성입니다. `sudo apt-get install -y libgl1 libglib2.0-0` |
 | 설치했는데 `ocr_available` 이 false | 가상환경(.venv)을 켠 상태에서 설치했는지, 설치 후 서버를 재시작했는지 확인하세요. |
 | kiwipiepy 설치 실패 (Windows) | Microsoft Visual C++ 재배포 패키지를 설치하세요. |
-| 첫 분류 요청이 5~15분 / 타임아웃 | 정상입니다. 가중치 약 10GB 를 받는 중입니다. 로그를 확인하고, `MODEL_CACHE_DIR` 을 영구 경로로 두세요. |
-| `KeyError: 'qwen3_5'` | transformers 가 낡았습니다. 1-4 의 4단계로 git 판을 설치하세요. (Colab 은 설치 후 **런타임 재시작** 필수) |
+| 첫 분류 요청이 5~15분 / 타임아웃 | 정상입니다. 가중치 약 18GB 를 받는 중입니다. 로그를 확인하고, `MODEL_CACHE_DIR` 을 영구 경로로 두세요. |
+| `KeyError: 'gemma4'` | transformers 가 5.5 미만입니다. 1-4 의 4단계로 올리세요. (Colab 은 설치 후 **런타임 재시작** 필수) |
+| 학습 loss 가 `nan` / 판정 확률이 전부 같음 | T4 처럼 bfloat16 이 없는 GPU 에서 Gemma 가 float16 으로 넘친 것입니다. L4·A100 으로 바꾸세요. (학습은 `full_kbit_prep=True` 로 조금 나아질 수 있음) |
 | `Unrecognized processing class in BAAI/bge-m3` | `sentence-transformers` 5.4 이상이 설치된 것입니다. 5.4 부터 텍스트 전용 모델에도 AutoProcessor 로딩을 시도해 나는 오류입니다. `pip install "sentence-transformers<5.4"` 로 다시 설치하고 (Colab 은) **런타임 재시작**하세요. `requirements-model.txt` 는 이미 `<5.4` 로 고정돼 있으니, 이전에 더 새 버전을 설치해 둔 세션에서만 겪습니다. |
 | `CUDA out of memory` | `LLM_LOAD_4BIT=true` 인지 확인하세요. 그래도 나면 런타임/프로세스를 재시작하거나 `DEVICE=cpu` 로 바꾸세요. |
-| CPU 에서 한 요청에 수 분 | 4B 모델은 CPU 가 너무 느립니다. Colab T4 등 GPU 를 쓰세요. |
-| bf16 관련 경고/오류 | `LLM_4BIT_COMPUTE_DTYPE=auto` 로 두세요. T4 는 float16 이 맞습니다. |
-| 응답에 `<think>` 가 섞임 | `LLM_ENABLE_THINKING=false` 인지 확인하세요. |
+| CPU 에서 한 요청에 수 분 | Gemma 4 E4B 는 CPU 가 너무 느립니다. Colab L4 등 GPU 를 쓰세요. |
+| bf16 관련 경고/오류 | `LLM_4BIT_COMPUTE_DTYPE=auto` 로 두세요. T4 는 float16 이 자동으로 골라집니다. |
+| 응답에 사고 내용(`<\|channel>thought` 등)이 섞임 | `LLM_ENABLE_THINKING=false` 인지 확인하세요. |
 | Colab 이미지 업로드가 503 | Colab 에는 PaddleOCR 을 설치하지 않았기 때문입니다. 정상입니다. |
 | Colab 90분 방치 후 끊김 | 무료 티어 제한입니다. 노트북 4번 셀부터 다시 실행하세요. |
 | 기동 로그에 "벡터DB 를 사용할 수 없습니다" | `numpy` 모드의 윈도우(추출 전용)에서는 정상입니다. `pgvector` 모드라면 1-6 의 5단계(Colab 벡터 파일 복사)를 확인하세요. 그 외에는 `status` 의 `case_store.error` 를 보세요. |
@@ -822,9 +849,9 @@ charset-normalizer 가 짧은 한글 바이트열을 big5 등으로 잘못 추�
 |---|---|---|---|
 | ②→③ | 원문 → 키워드 3개 + 요약문 | kiwipiepy(형태소) + KeyBERT(bge-m3 재사용) + TextRank | 없음 |
 | ③ | 질의문 → 1024차원 벡터 | `BAAI/bge-m3` (sentence-transformers) | 없음 |
-| ④ | 카테고리 7종과 코사인 유사도 → top-4 | numpy | 없음 |
-| ④ 보조 | 라벨링된 사례로 top-4 재정렬 (`CASE_MODE`) | 벡터DB (numpy `.npy`) + bge-m3 | 없음 |
-| ⑤ | 의도 / 카테고리 / 도구 호출 JSON | `Qwen/Qwen3.5-4B` (+QLoRA 어댑터) | **유일한 파인튜닝 대상** |
+| ④ | 카테고리 7종과 코사인 유사도 → top-3 | numpy | 없음 |
+| ④ 보조 | 라벨링된 사례로 top-3 재정렬 (`CASE_MODE`) | 벡터DB (numpy `.npy`) + bge-m3 | 없음 |
+| ⑤ | 의도 / 카테고리 / 도구 호출 JSON | `google/gemma-4-E4B-it` (+QLoRA 어댑터) | **유일한 파인튜닝 대상** |
 
 원문을 그대로 임베딩하면 문서가 길수록 주제가 희석되므로, ③ 앞에서 키워드 3개와 요약문으로
 압축한 짧은 질의문을 만들어 넘깁니다. 그 질의문은 `debug.embed_query_text` 에서 볼 수 있습니다.
@@ -843,24 +870,29 @@ kiwipiepy / keybert 가 없으면 정규식·빈도 기반 폴백으로 내려�
 ```
 
 덕분에 (1) 형식이 깨질 수 없고 (2) 토큰 하나만 계산해 빠르며 (3) 확신 점수를 그대로 얻습니다.
-카테고리도 같은 방식으로 ④ 가 추린 **후보 4개 중에서만** 고릅니다. 의도에 따라 선택지가 다릅니다.
-후보 수는 `.env` 의 `CANDIDATE_TOP_K` (기본 4, 예전 3)입니다. **바꾸면 선택지 번호가 달라지므로 어댑터를 다시 학습해야 합니다.**
+카테고리도 같은 방식으로 ④ 가 추린 **후보 3개 중에서만** 고릅니다. 의도에 따라 선택지가 다릅니다.
+후보 수는 `.env` 의 `CANDIDATE_TOP_K` (기본 3. 9종일 때 4였다가 7종 개편으로 다시 3)입니다. **바꾸면 선택지 번호가 달라지므로 어댑터를 다시 학습해야 합니다.**
 (프롬프트 지문에 후보 수가 들어가 있어, 다른 후보 수로 학습한 어댑터를 올리면 서버가 `prompt_fingerprint` 불일치 경고를 냅니다)
 
 | 의도 | 카테고리 판정 |
 |---|---|
-| 접수 | 후보 4개 중 하나 (없음 불가) |
-| 조회 · 수정 · 삭제 | 후보 4개 + **`5. 없음`** — "어제 넣은 거 취소해 줘"처럼 주제가 안 드러나면 없음 |
+| 접수 | 후보 3개 중 하나 (없음 불가) |
+| 조회 · 수정 · 삭제 | 후보 3개 + **`4. 없음`** — "어제 넣은 거 취소해 줘"처럼 주제가 안 드러나면 없음 |
 | 문의 · 해당없음 | 판정하지 않음 (카테고리를 쓰지 않음) |
 
-후보는 프롬프트에 `1. 국토교통` 처럼 번호와 이름만 적습니다. 각 카테고리의 설명은 이미 고정 프리픽스의
+후보는 프롬프트에 `1. 교통·국토` 처럼 번호와 이름만 적습니다. 각 카테고리의 설명은 이미 고정 프리픽스의
 [카테고리 정의] 에 있으므로 반복하지 않습니다.
 
 도구 호출 JSON 만 일반 생성이며, 의도가 `문의` 면 도구를 부르지 않고 FAQ 를 검색해 즉답합니다. (5.11)
 도구의 `category` 인자는 번호 토큰으로 확정한 카테고리로 항상 맞춰집니다. (없음이면 `""`)
 
 - 의도 5종(+해당없음) : `문의` `접수` `조회` `수정` `삭제` (+ `해당없음`) — 한 요청에 하나만 판정됩니다.
-- 카테고리 7종 : `행정안전` `국토교통` `주택건축` `환경·위생` `보건복지` `소방` `기타`
+- 카테고리 7종 : `노동·기업` `교통·국토` `주택·건축` `환경·위생` `문화·행정·안전` `보건·복지` `기타`
+  (2026-10 에 9종 `노동` `기업` `교통` `주택·건축` `환경·위생` `건설·국토` `문화·행정·안전` `보건·복지` `기타` 에서
+  `노동`+`기업` → `노동·기업`, `교통`+`건설·국토` → `교통·국토` 로 합쳤습니다. 그 전의 처음 7종
+  `행정안전` `국토교통` `주택건축` `환경·위생` `보건복지` `소방` `기타` 도 바로 옮길 수 있습니다.
+  예전 라벨 → 새 라벨 규칙은 `training/category_migration.py`, 기존 민원 DB 이전은 `scripts/migrate_categories.py`.
+  API·DB 로 예전 9종 이름(`교통` 등)이 들어와도 `categories.get()` 이 지금 이름으로 바꿔 받습니다)
 
 카테고리를 바꾸려면 `app/services/categories.py` 한 곳만 고치면 됩니다. (도구 정의·프롬프트가 자동으로 따라갑니다)
 정의문 임베딩은 프로세스당 한 번 계산해 캐시하므로, 고친 뒤에는 서버/커널을 재시작하세요.
@@ -893,8 +925,8 @@ kiwipiepy / keybert 가 없으면 정규식·빈도 기반 폴백으로 내려�
 - 프리픽스는 요청마다 토큰이 한 글자도 달라지면 안 되므로 날짜·사용자 정보 같은 동적인 값은 넣지 마세요.
 - **prefill 시점** — `PRELOAD_MODELS=true` 면 기동할 때, 아니면 첫 분류 요청 때 한 번 합니다.
   프리픽스(카테고리·도구·의도 정의)를 고쳤다면 서버를 재시작해야 새 캐시가 만들어집니다.
-- **요청마다 복사본을 씁니다.** 캐시는 계산할 때마다 그 자리에서 늘어나는데, Qwen3.5 는 일부 층이
-  선형 어텐션이라 늘어난 부분을 잘라내 되돌릴 수 없기 때문입니다. (복사 비용은 프리픽스 재계산보다 훨씬 작습니다)
+- **요청마다 복사본을 씁니다.** 캐시는 계산할 때마다 그 자리에서 늘어나는데, Gemma 4 는 슬라이딩 윈도우(512토큰) 층과
+  전체 어텐션 층이 섞여 있어 늘어난 부분을 잘라내 되돌리는 것보다 복사본이 안전하기 때문입니다. (복사 비용은 프리픽스 재계산보다 훨씬 작습니다)
 - **안전장치** — 처음 만들 때 같은 입력을 캐시 사용/미사용으로 한 번씩 계산해 번호 판정이 같은지
   검증합니다(`LLM_KV_CACHE_VERIFY`). 다르거나, 사용 중 오류가 나면 **스스로 꺼지고** 기존 방식(전체 입력 계산)으로
   같은 결과를 냅니다. 상태는 `GET /api/v1/analyze/status` 의 `llm.kv_cache` 에서 봅니다.
@@ -917,14 +949,14 @@ kiwipiepy / keybert 가 없으면 정규식·빈도 기반 폴백으로 내려�
 저장 방식은 `CASE_STORE_BACKEND` 로 고릅니다 — `numpy`(기본, Colab 테스트용) 또는 `pgvector`(PostgreSQL, 1-6 참고).
 두 방식의 검색 결과는 같고, 아래 동작도 같습니다.
 
-사용자와 무관한 **분류 보조 전용**이며, 비슷한 과거 사례의 카테고리 라벨로 top-4 후보를 다시 정렬한 뒤
+사용자와 무관한 **분류 보조 전용**이며, 비슷한 과거 사례의 카테고리 라벨로 top-3 후보를 다시 정렬한 뒤
 ⑤ 에 넘깁니다. 언제·어떻게 쓸지는 `CASE_MODE` 로 고릅니다.
 
 | `CASE_MODE` | 동작 |
 |---|---|
-| `low_confidence` (기본) | ④ 1위 유사도가 `CANDIDATE_MIN_SCORE`(기본 0.65) 미만일 때만 섞기 |
+| `low_confidence` | ④ 1위 유사도가 `CANDIDATE_MIN_SCORE`(기본 0.6) 미만일 때만 섞기 |
 | `always` | 매번 섞기 |
-| `union` | 매번 섞고, **사례 점수 1위 카테고리가 top-4 밖이면 4위 자리에 넣기** (④ 와 사례 중 하나만 맞아도 정답이 후보에 들어감) |
+| `union` (기본) | 매번 섞고, **사례 점수 1위 카테고리가 top-3 밖이면 3위(마지막) 자리에 넣기** (④ 와 사례 중 하나만 맞아도 정답이 후보에 들어감) |
 
 ④ 가 '확신한 채로 틀리면'(1위 점수가 높은데 오답) `low_confidence` 는 벡터DB 를 열지 않아 사례가 도움이
 되지 못합니다. 어느 방식이 나은지는 학습 노트북 **6-1 측정 셀**로 records 에서 직접 비교해 고르세요.
@@ -937,7 +969,7 @@ kiwipiepy / keybert 가 없으면 정규식·빈도 기반 폴백으로 내려�
 ```
 사례 점수(c) = CASE_MIN_SCORE 이상인 유사 사례(최대 CASE_TOP_K개) 중 라벨이 c 인 것들의 유사도 합 / CASE_TOP_K
 최종 점수(c) = (1 - CASE_BLEND_WEIGHT) × ④ 점수(c) + CASE_BLEND_WEIGHT × 사례 점수(c)
-union 이면 : 최종 점수로 정렬한 뒤 사례 점수 1위 카테고리가 top-4 밖이면 4위 자리에 넣음
+union 이면 : 최종 점수로 정렬한 뒤 사례 점수 1위 카테고리가 top-3 밖이면 3위(마지막) 자리에 넣음
 ```
 
 | 파일 | 내용 |
@@ -950,7 +982,7 @@ union 이면 : 최종 점수로 정렬한 뒤 사례 점수 1위 카테고리가
 - **서버 기동 시** CSV 를 읽습니다. CSV 내용·임베딩 모델·키워드/요약 설정이 그대로면 `.npy` 만 읽고,
   하나라도 바뀌었으면 다시 임베딩합니다. (그때만 bge-m3 를 올리므로 기동이 느려집니다)
 - 7종에 없는 카테고리가 적힌 행은 건너뛰고 로그에 경고를 남깁니다.
-- 동봉된 `data/cases.csv` 는 총 542건(헷갈리는 경계 사례는 `memo` 컬럼에 설명)인 **예시 데이터**입니다. 실제 민원 사례로 바꾸거나
+- 동봉된 `data/cases.csv` 는 총 581건(카테고리마다 83건, 헷갈리는 경계 사례는 `memo` 컬럼에 설명)인 **예시 데이터**입니다. 실제 민원 사례로 바꾸거나
   추가하세요. 줄임말·오타 섞인 짧은 문장(예: `골목 가로등 불 안 들어옴`)도 일부 넣어 두었습니다.
 - 끄려면 `CASE_STORE_ENABLED=false`. 그러면 ④ 결과를 그대로 ⑤ 에 넘깁니다.
 
@@ -964,7 +996,7 @@ union 이면 : 최종 점수로 정렬한 뒤 사례 점수 1위 카테고리가
 | `CASE_TOP_K` | `5` | 가져올 유사 사례 수 |
 | `CASE_MIN_SCORE` | `0.5` | 이보다 덜 비슷한 사례는 반영하지 않음 |
 | `CASE_BLEND_WEIGHT` | `0.2` | 0 이면 ④ 그대로, 1 이면 사례 투표만 |
-| `CASE_MODE` | `low_confidence` | `low_confidence` / `always` / `union` (위 표) |
+| `CASE_MODE` | `union` | `low_confidence` / `always` / `union` (위 표) |
 | `CANDIDATE_SCORING` | `single` | ④ 점수 방식 `single` / `multi` |
 
 조회 결과는 `debug.case_lookup` 과 `debug.debug_text` 의 "④ 보조 : 벡터DB" 구간에서 볼 수 있습니다.
@@ -972,8 +1004,8 @@ union 이면 : 최종 점수로 정렬한 뒤 사례 점수 1위 카테고리가
 ### 5.5 ⑥ 민원 DB (SQLite - 접수/조회/수정/취소 실제 실행)
 
 ⑤ 가 만드는 건 "무엇을 어떤 값으로" 실행할지 담은 **도구 호출 JSON** 뿐입니다. 그 JSON 을 실제로
-DB 에 쓰거나 읽는 코드는 Qwen 과 무관한, 일반 파이썬 함수(`app/services/tool_executor.py` +
-`app/services/complaint_store.py`)입니다. Qwen 이 만든 값은 여기서 스키마·소유권·상태를
+DB 에 쓰거나 읽는 코드는 Gemma 와 무관한, 일반 파이썬 함수(`app/services/tool_executor.py` +
+`app/services/complaint_store.py`)입니다. Gemma 가 만든 값은 여기서 스키마·소유권·상태를
 다시 검증한 뒤에만 실행되므로, 모델이 없는 id 나 잘못된 카테고리를 적어도 그대로 실행되지 않습니다.
 
 **왜 PostgreSQL(pgvector처럼)이 아니라 SQLite인가** — 이 DB 를 실제로 써야 하는 곳이 Colab(모델)과
@@ -1009,10 +1041,10 @@ PC(추출) 양쪽 다인데, Colab 은 PC 의 PostgreSQL 에 네트워크로 닿
 
 | 인자 | 채우는 쪽 | 내용 |
 |---|---|---|
-| `complaint_id` | Qwen | 번호를 말했을 때만. 있으면 다른 조건보다 우선 |
-| `category` | 코드 | ⑤ 가 확정한 카테고리. 조회·수정·삭제는 후보 4개 + **없음** 중에서 고르며, 주제가 안 드러나면 없음(`""`) |
-| `keyword` | Qwen | 대상 표현을 원문 그대로 (예: `가로등`). 내용·위치에 글자로 있으면 일치, 없으면 bge-m3 의미 유사도 ≥ `SEARCH_SEMANTIC_MIN_SCORE` |
-| `period` | Qwen | 시점 표현을 원문 그대로 (예: `어제`, `지난주`, `방금`). 날짜 계산은 `app/services/period.py` 가 `TIMEZONE` 기준으로 함 |
+| `complaint_id` | Gemma | 번호를 말했을 때만. 있으면 다른 조건보다 우선 |
+| `category` | 코드 | ⑤ 가 확정한 카테고리. 조회·수정·삭제는 후보 3개 + **없음** 중에서 고르며, 주제가 안 드러나면 없음(`""`) |
+| `keyword` | Gemma | 대상 표현을 원문 그대로 (예: `가로등`). 내용·위치에 글자로 있으면 일치, 없으면 bge-m3 의미 유사도 ≥ `SEARCH_SEMANTIC_MIN_SCORE` |
+| `period` | Gemma | 시점 표현을 원문 그대로 (예: `어제`, `지난주`, `방금`). 날짜 계산은 `app/services/period.py` 가 `TIMEZONE` 기준으로 함 |
 
 - 못 찾으면 조건을 조금 풀어 한 번 더 찾습니다. (카테고리 조건 빼기 → 기간 앞뒤 하루 넓히기) 푼 경우 `tool_result.warnings` 에 남습니다.
 - 수정·삭제는 이미 취소된 민원을 대상에서 뺍니다.
@@ -1043,11 +1075,11 @@ PC(추출) 양쪽 다인데, Colab 은 PC 의 PostgreSQL 에 네트워크로 닿
   "tool_result": {
     "executed": true, "ok": true,
     "message": "수정 완료 - 37번 민원: 위치 '행복로 23길' → '행복로 15길'",
-    "data": { "id": 37, "category": "국토교통", "location": "행복로 15길", "status": "접수", "department": "국토교통과" },
+    "data": { "id": 37, "category": "교통·국토", "location": "행복로 15길", "status": "접수", "department": "교통건설과" },
     "error": null,
     "needs_selection": false,
-    "search": { "complaint_id": 0, "category": "국토교통", "keyword": "가로등", "period_text": "어제",
-                "period": "'어제' → 2026-09-29", "condition": "국토교통 · '가로등' · 어제", "notes": [], "matched": 1 }
+    "search": { "complaint_id": 0, "category": "교통·국토", "keyword": "가로등", "period_text": "어제",
+                "period": "'어제' → 2026-09-29", "condition": "교통·국토 · '가로등' · 어제", "notes": [], "matched": 1 }
   }
 }
 ```
@@ -1072,11 +1104,14 @@ Colab 노트북 6-A 의 "⑥ 민원 DB 실제 동작 확인" 셀에서 접수 �
 - CUDA + bitsandbytes 가 있으면 **4bit NF4(QLoRA 와 같은 설정)** 로, CPU 면 float32 로 올립니다.
 - 4bit 연산 dtype 은 GPU 에 맞춰 자동으로 고릅니다. **T4(Turing)는 bfloat16 이 없으므로 float16**,
   Ampere(RTX30/A100) 이상이면 bfloat16 입니다. (`LLM_4BIT_COMPUTE_DTYPE=auto`)
-- **Qwen3.5 는 기본이 사고(thinking) 모드입니다.** 의도/카테고리 판정은 다음 토큰 1개만 보므로
-  켜 두면 그 1개가 `<think>` 가 되어 판정이 깨집니다. `LLM_ENABLE_THINKING=false` 로 두세요.
-  (채팅 템플릿에 `enable_thinking=False` 를 넘기며, 혹시 섞여 나오는 `<think>` 블록은 잘라냅니다)
-- Qwen3.5 체크포인트는 비전 인코더가 붙은 구조라, 설치된 transformers 가 `AutoModelForCausalLM` 으로
-  못 올리면 자동으로 `AutoModelForImageTextToText` 로 다시 올립니다. 텍스트만 넣으므로 판정 방식은 같습니다.
+- **Gemma 4 는 사고(thinking) 모드가 있습니다.** 의도/카테고리 판정은 다음 토큰 1개만 보므로
+  켜 두면 그 1개가 사고 블록 시작 토큰이 되어 판정이 깨집니다. `LLM_ENABLE_THINKING=false` 로 두세요.
+  (채팅 템플릿에 `enable_thinking=False` 를 넘기며, 혹시 섞여 나오는 `<|channel>thought … <channel|>` 블록은 잘라냅니다)
+- Gemma 4 채팅 템플릿은 `<|turn>system … <turn|>` · `<|turn>user … <turn|>` · `<|turn>model` 이고, 발화 끝 토큰은 `<turn|>` 입니다.
+- Gemma 4 체크포인트는 비전·오디오 인코더가 붙은 구조라 `AutoModelForCausalLM` 이 `Gemma4ForConditionalGeneration` 을 올립니다.
+  (못 올리면 자동으로 `AutoModelForImageTextToText` 로 다시 올림) 텍스트만 넣으므로 판정 방식은 같고, LoRA 는 언어 모델 쪽에만 붙습니다.
+- 4bit 여도 층별 임베딩(PLE)·입력 임베딩(어휘 26만 개)은 bitsandbytes 가 양자화하지 않아 VRAM 약 9~10GB 를 씁니다.
+- Gemma 는 bfloat16 으로 학습된 모델이라 **T4(float16)에서는 값이 넘쳐 nan 이 날 수 있습니다.** 서버가 기동 로그에 경고를 남깁니다.
 
 로드 상태는 `GET /api/v1/analyze/status` 의 `loaded` 로 확인합니다.
 
@@ -1086,7 +1121,7 @@ Colab 노트북 6-A 의 "⑥ 민원 DB 실제 동작 확인" 셀에서 접수 �
 학습(실시간 loss 그래프·중간 출력) → 학습 후 평가·전후 비교·판정 → 저장 → 운영 경로로 재확인)
 
 6-1 · 6-2 셀은 학습 전에 ④ 설정(`CANDIDATE_SCORING`, `CASE_MODE`, `CANDIDATE_MIN_SCORE`, `CASE_BLEND_WEIGHT`)을
-records 로 비교해 고르고 `.env` 에 반영합니다. ④ 가 정답을 후보 4개에 못 올리면 ⑤ 를 학습해도 맞힐 수 없으므로,
+records 로 비교해 고르고 `.env` 에 반영합니다. ④ 가 정답을 후보 3개에 못 올리면 ⑤ 를 학습해도 맞힐 수 없으므로,
 `④ 놓침` 이 많으면 학습보다 먼저 여기서 줄이세요. (`training/calibrate.py`)
 
 **무엇을 학습하나** — 어댑터 하나에 도구 호출 JSON 의 인자 추출(content / location / complaint_id / keyword / period / field /
@@ -1101,7 +1136,7 @@ reason)을 주력으로, 의도·카테고리 판정을 소량(기본 각 15%) �
 | 단계별 프롬프트 | `prompts.build_intent_prompt` / `build_category_prompt` / `build_tool_prompt` |
 | 번호 정답 토큰, 어시스턴트 앞머리 | `llm_engine.number_token_ids`, `INTENT_ASSISTANT_PREFIX` / `CATEGORY_ASSISTANT_PREFIX` |
 | 도구 JSON 정답 형식 | `prompts.format_tool_call` (한 줄, 키 순서 고정) |
-| ④ 후보 4개 | `pipeline.run_candidates` (벡터DB 재정렬 포함) |
+| ④ 후보 3개 | `pipeline.run_candidates` (벡터DB 재정렬 포함) |
 | 베이스 모델 로드 | `llm_engine.load_base_model()` (서버와 같은 4bit 설정) |
 
 평가도 `llm_engine.judge_intent` / `judge_category` / `generate_tool_call` 을 그대로 부르므로 노트북 점수가 곧 서버 동작입니다.
@@ -1130,9 +1165,9 @@ LLM_ADAPTER_PATH=adapters/v1_0929     # 비우면 베이스 모델 (되돌리기
 | `keywords`, `summary` | ②→③ 키워드 3개 + 요약문 |
 | `embed_query_text` | ③ 임베딩 모델에 실제로 넘긴 질의문 |
 | `embedding_dim`, `embedding_preview` | ③ 벡터 차원과 앞부분 미리보기 |
-| `candidates_top`, `candidates_all` | ⑤ 에 넘긴 상위 4개와 7종 전체 점수 (벡터DB 로 재정렬했으면 재정렬 후 점수) |
+| `candidates_top`, `candidates_all` | ⑤ 에 넘긴 상위 3개와 7종 전체 점수 (벡터DB 로 재정렬했으면 재정렬 후 점수) |
 | `low_confidence` | ④ 1위 유사도가 `CANDIDATE_MIN_SCORE` 미만인지 (`CASE_MODE=low_confidence` 면 true 일 때 벡터DB 조회) |
-| `case_lookup` | 벡터DB 조회 결과 — 유사 사례, 카테고리별 사례 점수, 재정렬 전후 top-4 (조회했을 때만) |
+| `case_lookup` | 벡터DB 조회 결과 — 유사 사례, 카테고리별 사례 점수, 재정렬 전후 top-3 (조회했을 때만) |
 | `intent_choice`, `category_choice` | ⑤ 후보별 확신 점수 전체 |
 | `llm_raw_output` | ⑤ 모델 원시 출력 |
 | `timings_ms` | 단계별 소요 시간 |
@@ -1149,10 +1184,10 @@ Swagger 에서 눈으로 볼 때는 **`debug.debug_text` 하나만 펼쳐 보면
 
 ⑤ 의 의도 판정은 **6지선다**입니다: 1~5(문의/접수/조회/수정/삭제) + **6(해당없음)**.
 "해당없음"은 잡담·광고·욕설·의미 없는 문자열·무엇을 원하는지 특정할 수 없는 모호한 말을 위해 둔
-여섯 번째 선택지입니다. Qwen 이 이 번호를 고르면 카테고리 확정과 도구 호출을 생략하고 곧바로 반려합니다.
+여섯 번째 선택지입니다. Gemma 가 이 번호를 고르면 카테고리 확정과 도구 호출을 생략하고 곧바로 반려합니다.
 의도 판정(forward 1회)만 쓰고 멈추므로, 반려되는 요청이 오히려 더 빠릅니다.
 
-**게이트는 카테고리(④)와 무관합니다.** ④ 의 코사인 유사도는 후보 4개를 좁히고 벡터DB 를 열지 정하는 데만 쓰입니다.
+**게이트는 카테고리(④)와 무관합니다.** ④ 의 코사인 유사도는 후보 3개를 좁히고 벡터DB 를 열지 정하는 데만 쓰입니다.
 
 - `"제가 어제 문의한 내용 보여줘"` — 7종 어디와도 뚜렷이 겹치지 않지만, 의도(조회)가 명확하므로 **정상 통과**합니다.
 - `"오늘 점심 뭐 먹지 ㅋㅋ"` — 5가지 의도 중 어디에도 해당하지 않으므로 **반려**됩니다.
@@ -1173,7 +1208,7 @@ Swagger 에서 눈으로 볼 때는 **`debug.debug_text` 하나만 펼쳐 보면
 | 설정 | 의미 |
 |---|---|
 | `GATE_ENABLED=true` | `false` 면 차단하지 않고 반려 사유만 `gate.reason` 에 남깁니다 (관찰 모드) |
-| `CANDIDATE_MIN_SCORE=0.65` | ④ `low_confidence` 기준값. `CASE_MODE=low_confidence` 일 때 벡터DB 조회 기준. 반려와 무관합니다 |
+| `CANDIDATE_MIN_SCORE=0.6` | ④ `low_confidence` 기준값. `CASE_MODE=low_confidence` 일 때 벡터DB 조회 기준. 반려와 무관합니다 |
 
 `GATE_ENABLED=false` 로 두면 "해당없음"으로 판정된 요청도 통과는 시키되, 카테고리·도구는 여전히 생략되고
 `debug.debug_text` 의 "게이트" 구간에 반려됐을 사유가 남습니다. 정상 민원과 잡담·광고를 몇십 개씩 돌려
@@ -1195,16 +1230,16 @@ Swagger 에서 눈으로 볼 때는 **`debug.debug_text` 하나만 펼쳐 보면
 ### 5.11 문의 답변 — FAQ 검색 (RAG)
 
 의도가 `문의` 면 FAQ 를 **전부 넣지 않고**, 질문과 비슷한 FAQ 몇 개만 골라 답변 프롬프트에 넣습니다.
-FAQ 가 수백 개로 늘어도 프롬프트 길이·속도는 그대로이고, 비슷한 FAQ 가 없으면 Qwen 을 부르지 않아
+FAQ 가 수백 개로 늘어도 프롬프트 길이·속도는 그대로이고, 비슷한 FAQ 가 없으면 Gemma 를 부르지 않아
 **지어낸 답이 나갈 수 없습니다.** (`app/services/faq_store.py`, `llm_engine.answer_inquiry`)
 
 ```
 '문의' 판정
    → 질문 원문을 bge-m3 로 임베딩 (③ 과 같은 인스턴스)
    → FAQ 의 question·variants 벡터와 코사인 유사도 → FAQ 별 최고 점수 → 상위 FAQ_TOP_K 개
-   ├─ FAQ_MIN_SCORE 이상인 FAQ 가 있음 → 그 FAQ 만 넣고 Qwen 이 2문장 이내로 답변
-   │     └ Qwen 이 '확인이 어렵다'고 답하면 → FAQ_FALLBACK_MESSAGE 로 바꿈
-   └─ 하나도 없음 → Qwen 호출 없이 FAQ_FALLBACK_MESSAGE
+   ├─ FAQ_MIN_SCORE 이상인 FAQ 가 있음 → 그 FAQ 만 넣고 Gemma 가 2문장 이내로 답변
+   │     └ Gemma 가 '확인이 어렵다'고 답하면 → FAQ_FALLBACK_MESSAGE 로 바꿈
+   └─ 하나도 없음 → Gemma 호출 없이 FAQ_FALLBACK_MESSAGE
 ```
 
 **FAQ 파일** — `data/faq.csv` (사람이 편집). 기동 시 같은 폴더에 `faq.npy` / `faq.meta.json` 이 자동 생성되고,
@@ -1229,7 +1264,7 @@ CSV·임베딩 설정이 그대로면 다음 기동부터는 `.npy` 만 읽습�
 | `FAQ_TOP_K` | `3` | 프롬프트에 넣을 최대 FAQ 수 |
 | `FAQ_MIN_SCORE` | `0.6` | 이보다 덜 비슷한 FAQ 는 넣지 않음. **시작값** — 아래처럼 측정해 조정 |
 | `FAQ_QUERY_MAX_CHARS` | `300` | 검색에 쓸 질문 길이 상한 |
-| `FAQ_FALLBACK_MESSAGE` | (안내 문구) | 비슷한 FAQ 가 없거나 Qwen 이 답할 수 없다고 할 때의 답 |
+| `FAQ_FALLBACK_MESSAGE` | (안내 문구) | 비슷한 FAQ 가 없거나 Gemma 가 답할 수 없다고 할 때의 답 |
 
 **`FAQ_MIN_SCORE` 정하기** — 문의 질문마다 "정답 FAQ id" 또는 "없음" 을 적은 목록을 만들고, 값을 0.4~0.8 로 바꿔 가며
 ① 정답이 있는 질문에서 정답 FAQ 가 선택되는 비율, ② "없음" 질문이 고정 문구로 가는 비율을 보세요.
@@ -1239,13 +1274,13 @@ CSV·임베딩 설정이 그대로면 다음 기동부터는 `.npy` 만 읽습�
 프롬프트 지문(`prompt_fingerprint`)은 예전 답변 프롬프트 틀을 고정값으로 넣어 계산하므로 FAQ·답변 프롬프트를 바꿔도
 값이 그대로입니다. 기존 어댑터의 `run_info.json` 과 학습 노트북 8단계의 기준선 캐시가 계속 유효합니다.
 
-**확인** — `DEBUG=true` 면 `debug.faq_lookup`(상위 FAQ·점수·선택 여부·Qwen 원시 출력)과 `debug_text` 의
+**확인** — `DEBUG=true` 면 `debug.faq_lookup`(상위 FAQ·점수·선택 여부·Gemma 원시 출력)과 `debug_text` 의
 "문의 답변 : FAQ 검색" 구간에서 봅니다. 준비 상태는 `GET /api/v1/analyze/status` 의 `faq_store`.
 
 ### 5.12 대화 이어가기 — "어느 민원인가요?" → "두 번째 거요" (Qwen-Agent)
 
 수정·취소 대상이 여러 건이면 서버가 후보에 번호를 붙여 되묻고, **대화 세션**에 그 상태를 기억합니다.
-사용자의 다음 말은 **Qwen-Agent**(함수 호출 에이전트)가 해석해, 처음 요청을 고른 민원에 실행합니다.
+사용자의 다음 말은 **Qwen-Agent**(함수 호출 에이전트 프레임워크, 말하는 모델은 Gemma)가 해석해, 처음 요청을 고른 민원에 실행합니다.
 
 ```
 사용자  가로등 민원 취소해 주세요          → ②~⑥ 파이프라인 → 3건이라 실행 안 함 (needs_selection)
@@ -1258,10 +1293,10 @@ CSV·임베딩 설정이 그대로면 다음 기동부터는 `.npy` 만 읽습�
 
 | 구성 | 내용 |
 |---|---|
-| LLM | Qwen-Agent 의 `BaseFnCallModel` 을 상속한 `SharedQwenLLM`. **이미 올라와 있는 Qwen(4bit + 어댑터)을 그대로 씀** — Qwen-Agent 기본 `transformers` 타입은 모델을 한 벌 더 올려 GPU 메모리가 두 배가 되므로 쓰지 않음. 사고 모드는 끄고 렌더링 |
+| LLM | Qwen-Agent 의 `BaseFnCallModel` 을 상속한 `SharedModelLLM`. **이미 올라와 있는 Gemma(4bit + 어댑터)를 그대로 씀** — Qwen-Agent 기본 `transformers` 타입은 모델을 한 벌 더 올려 GPU 메모리가 두 배가 되므로 쓰지 않음. 사고 모드는 끄고 렌더링 |
 | 도구 | `select_complaint(position \| complaint_id)` · `cancel_selection()` · `start_new_request()` |
 | 에이전트 | Qwen-Agent `Agent` 를 상속해 **LLM 1회 + 도구 1회** 로 끝냄. 사용자에게 보낼 문장은 LLM 이 아니라 서버 코드(tool_executor 결과)가 만듦 |
-| 형식 | Qwen-Agent 'nous' 함수 호출 프롬프트(`<tool_call>{json}</tool_call>`). Qwen3.5 가 자기 형식(`<function=…><parameter=…>`)으로 답해도 변환해서 처리 |
+| 형식 | Qwen-Agent 'nous' 함수 호출 프롬프트(`<tool_call>{json}</tool_call>`). Gemma 4 가 자기 형식(`<\|tool_call>call:이름{키:<\|"\|>값<\|"\|>}<tool_call\|>`)으로 답해도 변환해서 처리 |
 | 검증 | 에이전트가 고른 번호가 후보 목록에 있는지 서버가 다시 확인. 실제 DB 변경은 tool_executor 의 소유권·상태 검사를 그대로 거침 |
 
 **해석 결과별 처리** (`app/services/chat.py`)
@@ -1298,7 +1333,7 @@ CSV·임베딩 설정이 그대로면 다음 기동부터는 `.npy` 만 읽습�
 `front_stub/chatClient.js` 는 서버와 주고받는 부분만 담은 JS 클래스입니다.
 
 **확인** — Colab 서버 노트북 6-A 의 "대화 이어가기 확인" 셀, 또는 서버를 띄운 뒤 `/chat-demo/demo.html`.
-실제 Qwen3.5 가 도구를 잘 고르는지(특히 "가로등 거"처럼 내용으로 가리키는 말)는 여기서 몇 문장 넣어 보며 확인하세요.
+실제 Gemma 가 도구를 잘 고르는지(특히 "가로등 거"처럼 내용으로 가리키는 말)는 여기서 몇 문장 넣어 보며 확인하세요.
 
 ## 6. 오류 응답
 
@@ -1323,7 +1358,7 @@ CSV·임베딩 설정이 그대로면 다음 기동부터는 `.npy` 만 읽습�
 | 422 | `NO_TEXT` | 추출된 텍스트가 비어 분류할 수 없음 (`/analyze/*`) |
 | 422 | `VALIDATION_ERROR` | 요청 형식 오류 |
 | 503 | `OCR_UNAVAILABLE` | PP-OCRv5 미설치 (이미지 파일 요청 시) |
-| 503 | `MODEL_UNAVAILABLE` | bge-m3 / Qwen 미설치·로드 실패 (`/analyze/*`, `/chat/message`) |
+| 503 | `MODEL_UNAVAILABLE` | bge-m3 / Gemma 미설치·로드 실패 (`/analyze/*`, `/chat/message`) |
 | 404 | `SESSION_NOT_FOUND` | 대화 세션이 없음 (`session_id` 를 비우고 보내면 새로 만듦) |
 | 403 | `SESSION_FORBIDDEN` | 다른 사용자의 대화 세션 |
 | 500 | `INTERNAL_ERROR` | 처리되지 않은 예외 (`DEBUG=true` 면 `detail` 에 원인) |
@@ -1358,12 +1393,14 @@ backend/
 │   ├── samples.py            # 정답 -> 학습 샘플 (추론과 같은 함수로 조립, 정답에만 loss)
 │   ├── evaluate.py           # 운영 코드로 채점, 학습 전후 비교·판정
 │   ├── trainer.py            # LoRA 부착·학습·실시간 그래프·저장·버전 비교
+│   ├── category_migration.py # 예전 카테고리(9종·처음 7종) → 지금 7종 라벨 변환 규칙 (데이터 재라벨·DB 이전 공용)
 │   ├── calibrate.py          # ④ 방식 측정 (벡터DB 사용 방식·문턱·가중치 비교, 노트북 6-1)
 │   ├── build_notebook.py     # colab_train.ipynb 생성 스크립트
 │   └── sample_data/sample_records.jsonl   # 예시 정답 90건
 ├── scripts/
 │   ├── setup_pgvector.sql    # PostgreSQL DB 생성 + vector 확장 켜기 (1-6)
-│   └── sync_cases.py         # 벡터DB 적재 + 자기 벡터 검색으로 동작 확인 (1-6)
+│   ├── sync_cases.py         # 벡터DB 적재 + 자기 벡터 검색으로 동작 확인 (1-6)
+│   └── migrate_categories.py # 기존 complaints.db 의 예전 카테고리를 지금 7종으로 이전
 ├── README.md
 └── app/
     ├── __init__.py
@@ -1387,17 +1424,17 @@ backend/
         ├── keyphrase.py      # ②→③ 키워드 3개 + 요약문
         ├── embedder.py       # ③ bge-m3
         ├── categories.py     # 카테고리 7종 정의
-        ├── candidates.py     # ④ 코사인 유사도 top-4
+        ├── candidates.py     # ④ 코사인 유사도 top-3
         ├── case_store.py     # ④ 보조 벡터DB (라벨링된 사례로 후보 재정렬, numpy/pgvector 선택)
         ├── faq_store.py      # '문의' 답변용 FAQ 검색 (질문과 비슷한 FAQ 만 프롬프트에, 없으면 고정 문구)
         ├── pg_store.py       # 벡터DB 의 PostgreSQL + pgvector 저장소
         ├── prompts.py        # ⑤ 고정 프리픽스(CAG 대상) + 단계별 프롬프트
-        ├── llm_engine.py     # ⑤ Qwen 로드 / KV 캐시 재사용 / 번호 토큰 판정 / 도구 JSON
+        ├── llm_engine.py     # ⑤ Gemma 로드 / KV 캐시 재사용 / 번호 토큰 판정 / 도구 JSON
         ├── complaint_store.py# ⑥ 민원 DB (SQLite - 접수/조회/수정/취소)
         ├── tool_executor.py  # ⑤ 의 도구 호출 JSON을 ⑥ 에서 실제로 검증·실행 (번호 없이 민원 찾기 포함)
         ├── chat.py           # 대화 한 턴 처리 (되묻기 → 대기 저장 → 답 해석 → 원래 요청 실행)
         ├── chat_agent.py     # "두 번째 거요" 해석 - Qwen-Agent 우선, 안 되면 규칙
-        ├── qwen_agent_backend.py # Qwen-Agent 연결 (이미 올린 Qwen 공유, 도구 3개, 1회 실행 에이전트)
+        ├── qwen_agent_backend.py # Qwen-Agent 연결 (이미 올린 Gemma 공유, 도구 3개, 1회 실행 에이전트)
         ├── session_store.py  # 대화 세션·대기 중인 선택·대화 기록 (SQLite)
         ├── period.py         # 시점 표현("어제", "지난주") -> 날짜 범위
         ├── runtime.py        # 디바이스·4bit·dtype 판단

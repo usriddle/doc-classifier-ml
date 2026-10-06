@@ -4,9 +4,9 @@
   ② 추출 원문
      -> ②→③ 키워드 3개 + 요약문        (keyphrase)
      -> ③  bge-m3 임베딩 1024차원       (embedder)
-     -> ④  코사인 유사도 top-4          (candidates, 카테고리 후보만 좁힘 - 게이트 아님)
-        └ 벡터DB 사례로 top-4 재정렬 (case_store, CASE_MODE: 애매할 때만/매번/매번+후보 보장)
-     -> ⑤  Qwen 의도/카테고리/도구 JSON (llm_engine)
+     -> ④  코사인 유사도 top-3          (candidates, 카테고리 후보만 좁힘 - 게이트 아님)
+        └ 벡터DB 사례로 top-3 재정렬 (case_store, CASE_MODE: 애매할 때만/매번/매번+후보 보장)
+     -> ⑤  Gemma 의도/카테고리/도구 JSON (llm_engine)
         └ 의도가 '문의' 면 FAQ 검색(faq_store) 후 비슷한 FAQ 만 넣어 즉답 (없으면 고정 문구)
         -> ⑥  민원 DB 실제 실행 (tool_executor, 의도가 접수/조회/수정/삭제일 때만)
 
@@ -93,7 +93,7 @@ def _check_gate(llm: LlmResult) -> GateDecision:
     """
     ⑤ 의도 판정 기준 게이트.
 
-    Qwen 이 6지선다(문의/접수/조회/수정/삭제/해당없음) 중 "해당없음"을 고르면
+    Gemma 가 6지선다(문의/접수/조회/수정/삭제/해당없음) 중 "해당없음"을 고르면
     반려합니다. 카테고리(④)와 무관하므로 "제가 어제 문의한 내용 보여줘"처럼
     도로·환경 같은 7종 어디와도 뚜렷이 겹치지 않는 문장도, 의도(조회)만 명확하면
     통과합니다.
@@ -137,7 +137,7 @@ def run_candidates(text: str, request_id: str = "-") -> CandidateStage:
     """
     정리된 원문 하나를 ②→③→④(+벡터DB 재정렬)까지만 통과시킵니다.
 
-    run() 이 이 함수를 그대로 쓰고, 학습 노트북도 카테고리 학습 샘플의 후보 4개를
+    run() 이 이 함수를 그대로 쓰고, 학습 노트북도 카테고리 학습 샘플의 후보 3개를
     이 함수로 만듭니다. 그래서 학습 때 보는 후보 분포가 운영과 같습니다.
     """
     timings: dict[str, int] = {}
@@ -214,7 +214,7 @@ def run(
         embedding_dim = int(cand.query_vector.shape[0])
         preview = [round(float(v), 4) for v in cand.query_vector[: settings.DEBUG_VECTOR_PREVIEW]]
 
-    # --- ⑤ Qwen 판정 (의도 6지선다 -> 해당없음이면 카테고리·도구는 내부에서 생략) ---
+    # --- ⑤ Gemma 판정 (의도 6지선다 -> 해당없음이면 카테고리·도구는 내부에서 생략) ---
     started = time.perf_counter()
     llm = llm_engine.decide(text, [c.name for c in cand.top])
     timings["llm_ms"] = int((time.perf_counter() - started) * 1000)
@@ -368,7 +368,7 @@ def _render_faq_debug(llm: LlmResult) -> list[str]:
             lines.append(f"  [{h.id}] {h.question}")
     lines += [
         "",
-        "-- Qwen 원시 출력 --",
+        "-- Gemma 원시 출력 --",
         fl.model_answer or "(호출 안 함 - 고정 문구)",
         "",
         "-- 최종 답변 --",
@@ -410,20 +410,20 @@ def render_debug_text(result: PipelineResult) -> str:
     ]
     lookup = result.case_lookup
     # 벡터DB 로 재정렬했다면 ④ 원래 점수를 보여 주고, ⑤ 에 넘긴 후보는 아래 구간에서 보여 줍니다.
-    top4 = lookup.before if lookup else cand.top
+    top_k_list = lookup.before if lookup else cand.top
     all4 = lookup.before_all if lookup and lookup.before_all else cand.all_scores
-    lines.append(f"-- 상위 {len(top4)}개" + (" (재정렬 전)" if lookup and lookup.used else " (⑤ 카테고리 확정에 전달)") + " --")
-    for c in top4:
+    lines.append(f"-- 상위 {len(top_k_list)}개" + (" (재정렬 전)" if lookup and lookup.used else " (⑤ 카테고리 확정에 전달)") + " --")
+    for c in top_k_list:
         lines.append(f"  {c.rank}. {_pad(c.name, 10)} {c.score:.4f}")
     lines += ["", "-- 7종 전체 --"]
     for c in all4:
         lines.append(f"  {c.rank}. {_pad(c.name, 10)} {c.score:.4f}")
     lines += [
         "",
-        f"1위 유사도 {top4[0].score:.4f} / 기준 {settings.CANDIDATE_MIN_SCORE:.2f} -> "
+        f"1위 유사도 {top_k_list[0].score:.4f} / 기준 {settings.CANDIDATE_MIN_SCORE:.2f} -> "
         + ("애매함(low_confidence)" if cand.low_confidence else "충분")
         + (" - 벡터DB 조회" if lookup is not None else " - 벡터DB 조회 안 함")
-        if top4 else "(후보 없음)",
+        if top_k_list else "(후보 없음)",
         "(참고 : 이 값은 반려 기준이 아닙니다. 반려는 아래 ⑤ 의도 판정의 "
         "'해당없음' 여부로만 정합니다)",
         "",

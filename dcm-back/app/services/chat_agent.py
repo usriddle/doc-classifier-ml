@@ -102,7 +102,7 @@ def _conversation(history: list[ChatMessage], user_text: str) -> list[dict]:
     """최근 대화 + 이번 말. Qwen-Agent 메시지 형식."""
     msgs = [{"role": m.role, "content": m.text} for m in history if m.role in ("user", "assistant") and m.text]
     msgs = msgs[-max(0, settings.CHAT_HISTORY_MESSAGES):] if settings.CHAT_HISTORY_MESSAGES else []
-    # Qwen 채팅 템플릿은 첫 발화가 user 여야 자연스럽습니다. (system 다음에 assistant 로 시작하지 않게)
+    # Gemma 채팅 템플릿은 첫 발화가 user 여야 자연스럽습니다. (system 다음에 assistant 로 시작하지 않게)
     while msgs and msgs[0]["role"] != "user":
         msgs.pop(0)
     msgs.append({"role": "user", "content": user_text})

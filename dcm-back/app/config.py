@@ -53,7 +53,7 @@ class Settings(BaseSettings):
     PDF_OCR_EMBEDDED_IMAGES: bool = True
 
     # =========================================================================
-    # 분류 파이프라인 (③ 임베딩 / ④ 후보 추림 / ⑤ Qwen)
+    # 분류 파이프라인 (③ 임베딩 / ④ 후보 추림 / ⑤ Gemma)
     # =========================================================================
 
     # --- 공통 실행 환경 ---
@@ -88,12 +88,12 @@ class Settings(BaseSettings):
     EMBED_MAX_SEQ_LENGTH: int = 1024  # 8192 까지 가능하지만 길수록 느립니다
 
     # --- ④ 후보 추림 ---
-    # ⑤ Qwen 에게 넘길 카테고리 후보 수. (조회·수정·삭제는 여기에 "없음" 이 하나 더 붙음)
+    # ⑤ 판정 모델에게 넘길 카테고리 후보 수. (조회·수정·삭제는 여기에 "없음" 이 하나 더 붙음)
     # 바꾸면 ⑤ 의 선택지가 달라지므로 어댑터를 다시 학습해야 합니다. (프롬프트 지문이 바뀌어 서버가 경고함)
-    CANDIDATE_TOP_K: int = 4          # 예전 3
+    CANDIDATE_TOP_K: int = 3          # 7종 개편(2026-10)으로 4 -> 3
     # 1위 유사도가 이보다 낮으면 candidates.low_confidence=true 로 표시하고 벡터DB(사례)를
     # 열어 후보를 재정렬합니다. (아래 게이트의 반려 기준은 아닙니다)
-    CANDIDATE_MIN_SCORE: float = 0.65  # 학습 노트북 6-1 측정으로 고른 값 (예전 기본 0.45)
+    CANDIDATE_MIN_SCORE: float = 0.6   # 팀 기준값 (예전 0.65 / 0.45). 6-1 측정으로 다시 고를 수 있음
     # 카테고리 점수 계산 방식
     #   single : 카테고리 정의문(설명+키워드 전체) 벡터 1개와 비교 (예전 기본)
     #   multi  : 정의문 벡터 + 키워드 하나하나의 벡터 중 가장 가까운 것의 점수
@@ -112,7 +112,7 @@ class Settings(BaseSettings):
     #   low_confidence : ④ 1위 < CANDIDATE_MIN_SCORE 일 때만 섞기 (기존 방식)
     #   always         : 매번 섞기
     #   union          : 매번 섞고, 사례 점수 1위 카테고리를 후보에 반드시 포함
-    CASE_MODE: str = "low_confidence"
+    CASE_MODE: str = "union"           # 팀 기준값 (예전 low_confidence)
     # 저장 방식: numpy (메모리, Colab 테스트용) | pgvector (PostgreSQL, PC·운영 서버용)
     CASE_STORE_BACKEND: str = "numpy"
     # pgvector 접속 정보. 예) postgresql://postgres:비밀번호@localhost:5432/minwon
@@ -128,11 +128,11 @@ class Settings(BaseSettings):
     FAQ_CSV_PATH: str = "./data/faq.csv"
     FAQ_TOP_K: int = 3                # 프롬프트에 넣을 최대 FAQ 수
     # 질문과 FAQ(질문·다른 표현 중 가장 가까운 것)의 유사도가 이보다 낮으면 프롬프트에 넣지 않습니다.
-    # 하나도 남지 않으면 Qwen 을 부르지 않고 FAQ_FALLBACK_MESSAGE 로 답합니다.
+    # 하나도 남지 않으면 모델을 부르지 않고 FAQ_FALLBACK_MESSAGE 로 답합니다.
     # 시작값입니다 - 문의 질문으로 측정해 조정하세요. (README 5.11)
     FAQ_MIN_SCORE: float = 0.6
     FAQ_QUERY_MAX_CHARS: int = 300    # 검색에 쓸 질문 길이 상한
-    # 비슷한 FAQ 가 없거나 Qwen 이 '확인이 어렵다'고 답했을 때 돌려줄 문구
+    # 비슷한 FAQ 가 없거나 모델이 '확인이 어렵다'고 답했을 때 돌려줄 문구
     FAQ_FALLBACK_MESSAGE: str = (
         "문의하신 내용은 지금 안내해 드리기 어렵습니다. "
         "담당 부서에 직접 문의해 주시거나, 확인이 필요한 내용을 민원으로 접수해 주세요."
@@ -162,7 +162,7 @@ class Settings(BaseSettings):
     # 수정·취소 대상이 여러 건이라 "어느 민원인가요?" 라고 되물은 뒤, 사용자의 다음 말
     # ("두 번째 거요", "가로등 거", "37번이요", "아니에요 그냥 둘게요")을 이전 후보 목록과 연결합니다.
     # (app/services/chat.py, chat_agent.py, session_store.py)
-    # true 면 Qwen-Agent(function calling)로 다음 말을 해석합니다. 이미 올라와 있는 Qwen 을 그대로 씁니다.
+    # true 면 Qwen-Agent(function calling 프레임워크)로 다음 말을 해석합니다. 이미 올라와 있는 판정 모델(Gemma)을 그대로 씁니다.
     # false 거나 qwen-agent 가 설치되지 않았으면 규칙(“N번째”, “N번 민원”, 거절 표현)으로만 해석합니다.
     CHAT_AGENT_ENABLED: bool = True
     # 대화 상태(세션·대기 중인 선택·대화 기록)를 저장할 SQLite 파일
@@ -172,32 +172,35 @@ class Settings(BaseSettings):
     CHAT_MAX_CHOICES: int = 10              # 되물을 때 보여 줄(에이전트에게 줄) 최대 후보 수
     CHAT_HISTORY_MESSAGES: int = 6          # 에이전트에게 줄 최근 대화 수 (사용자+시스템 발화)
     CHAT_AGENT_MAX_NEW_TOKENS: int = 160    # 에이전트 한 번의 생성 길이 (도구 호출 JSON 한 개면 충분)
-    # true 면 에이전트가 말할 때만 QLoRA 어댑터를 끄고 베이스 Qwen 으로 판단합니다.
+    # true 면 에이전트가 말할 때만 QLoRA 어댑터를 끄고 베이스 모델로 판단합니다.
     # (어댑터는 판정 프롬프트로 학습되어 있어, 에이전트 프롬프트에서는 베이스가 나을 수 있음 - 측정해 보고 고르세요)
     # 어댑터를 끄는 동안 모델 전체에 적용되므로, 동시에 여러 요청을 받는 운영 서버에서는 false 로 두세요.
     CHAT_AGENT_DISABLE_ADAPTER: bool = False
     # true 면 front_stub/ 의 최소 데모 화면을 http://서버/chat-demo/demo.html 로 엽니다. (운영에서는 false)
     CHAT_DEMO_ENABLED: bool = True
 
-    # --- ⑤ Qwen3.5 4B (+ QLoRA) ---
-    # Colab T4(16GB)에서 4bit 로 올리는 것을 기준으로 잡았습니다.
-    LLM_MODEL: str = "Qwen/Qwen3.5-4B"
+    # --- ⑤ Gemma 4 E4B (+ QLoRA) ---
+    # Ollama 의 gemma4:e4b 와 같은 모델의 Hugging Face 판입니다. (번호 토큰 확률·LoRA 학습에 로짓이 필요해
+    # Ollama 가 아니라 transformers 로 직접 올립니다. transformers 5.5 이상 필요)
+    # 4bit 로 올려도 층별 임베딩(PLE)이 16bit 로 남아 VRAM 약 9~10GB - 학습은 L4(24GB) 이상을 권장합니다.
+    LLM_MODEL: str = "google/gemma-4-E4B-it"
 
-    # Qwen3.5 는 기본이 '사고(thinking) 모드'라 답 앞에 <think>...</think> 를 먼저 씁니다.
+    # Gemma 4 는 enable_thinking=True 면 답 앞에 사고 블록(<|channel>thought ... <channel|>)을 씁니다.
     # 의도/카테고리는 번호 토큰 1개만 보므로 사고 모드가 켜져 있으면 판정이 깨집니다.
-    # 반드시 false 로 두세요. (true 로 두면 <think> 블록을 잘라내고 처리하지만 훨씬 느립니다)
+    # 반드시 false 로 두세요. (true 로 두면 사고 블록을 잘라내고 처리하지만 훨씬 느립니다)
     LLM_ENABLE_THINKING: bool = False
     # 모델 저장소의 자체 코드(modeling_*.py)를 실행해야 올라가는 모델만 true. (예: 일부 EXAONE 판)
-    # Qwen·Llama·Gemma 처럼 transformers 가 기본 지원하는 모델은 false 로 둡니다.
+    # Gemma·Qwen·Llama 처럼 transformers 가 기본 지원하는 모델은 false 로 둡니다.
     LLM_TRUST_REMOTE_CODE: bool = False
     # QLoRA 어댑터 경로(로컬 폴더 또는 HF repo id). 비우면 베이스 모델만 씁니다.
     LLM_ADAPTER_PATH: str = ""
     # 4bit NF4 양자화 (QLoRA 와 동일 설정). CUDA + bitsandbytes 일 때만 적용됩니다.
-    # Colab T4 에서 4B 모델을 올리려면 반드시 true 여야 합니다. (fp16 로는 8GB 를 먹습니다)
+    # 반드시 true 로 두세요. (Gemma 4 E4B 를 16bit 로 올리면 가중치만 약 16GB)
     LLM_LOAD_4BIT: bool = True
 
     # 4bit 연산 dtype. auto = GPU 가 bfloat16 을 지원하면 bfloat16, 아니면 float16.
     # T4(Turing)는 bfloat16 을 지원하지 않으므로 auto 면 자동으로 float16 이 됩니다.
+    # Gemma 는 bfloat16 으로 학습된 모델이라 float16 에서 inf/nan 이 날 수 있습니다 - L4·A100 권장.
     LLM_4BIT_COMPUTE_DTYPE: str = "auto"   # auto | bfloat16 | float16
 
     # KV 캐시(CAG) - 고정 프리픽스를 한 번만 prefill 해 두고 요청마다 재사용합니다.

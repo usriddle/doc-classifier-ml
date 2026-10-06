@@ -46,7 +46,7 @@ class OcrUnavailableError(AppError):
 
 class ModelUnavailableError(AppError):
     """
-    분류 파이프라인 모델(bge-m3 / Qwen)을 사용할 수 없는 경우.
+    분류 파이프라인 모델(bge-m3 / Gemma)을 사용할 수 없는 경우.
 
     라이브러리 미설치, 가중치 다운로드 실패, GPU 메모리 부족 등이 해당합니다.
     """

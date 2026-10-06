@@ -7,7 +7,8 @@ QLoRA 학습 - LoRA 부착, 학습 루프, 실시간 그래프, 중간 점검, �
   - 배치 크기는 1 로 고정하고 gradient accumulation 으로 묶습니다.
     그 대신 정답 구간의 로짓만 계산(logits_to_keep)해서, 어휘 수 x 전체 길이 크기의
     로짓을 만들지 않습니다. T4 메모리를 가장 크게 아끼는 부분입니다.
-  - 어댑터는 비전 인코더를 빼고 언어 모델의 선형층에만 붙입니다.
+  - 어댑터는 비전·오디오 인코더를 빼고 언어 모델의 어텐션·MLP 선형층(q/k/v/o, gate/up/down)에만 붙입니다.
+    (Gemma 4 E4B 의 층별 임베딩(PLE) 투영층은 건드리지 않습니다)
 """
 
 from __future__ import annotations
@@ -34,23 +35,26 @@ class TrainConfig:
     # --- LoRA ---
     lora_r: int = 16               # 어댑터 용량. 올리면 더 많이 배우지만 과적합·기존 능력 손상 위험도 커짐
     lora_alpha: int = 32           # 어댑터 영향력. 보통 r 의 2배
-    lora_dropout: float = 0.05
+    lora_dropout: float = 0.1      # Gemma 4 v1 에서 검증 loss 가 절반 지점 뒤로 다시 올라 0.05 -> 0.1
     # --- 학습 ---
-    learning_rate: float = 2e-4    # 가장 민감한 값. loss 가 튀면 낮추고, 안 내려가면 올림
-    epochs: float = 3.0
+    learning_rate: float = 1e-4    # 가장 민감한 값. Gemma 4 v1(2e-4)은 높은 학습률 구간에서 loss 가 다시 튀어 1e-4 로
+    epochs: float = 1.0
     grad_accum: int = 8            # 배치 1 x 8 = 실효 배치 8
-    warmup_ratio: float = 0.05
+    warmup_ratio: float = 0.1      # 0.05(약 13스텝)는 짧아 최고 학습률에서 흔들림 -> 0.1
     scheduler: str = "cosine"
     weight_decay: float = 0.0
     max_grad_norm: float = 1.0
     max_length: int = 4096         # 이보다 긴 샘플은 버림 (정답이 잘린 채 학습되지 않게)
-    evals_per_epoch: int = 4       # 한 epoch 에 검증 loss 를 몇 번 잴지
+    evals_per_epoch: int = 8       # 한 epoch 에 검증 loss 를 몇 번 잴지 (4번이면 최저점을 62스텝 간격으로만 봄)
+    # 검증 loss 가 이 횟수만큼 연속으로 최저 기록을 못 깨면 학습을 멈춥니다. (0 이면 끝까지)
+    # 최저점 체크포인트는 load_best_model_at_end 로 어차피 고르므로, 남은 스텝 시간을 아끼는 용도입니다.
+    early_stopping_patience: int = 3
     logging_steps: int = 1
     save_total_limit: int = 2
     seed: int = 42
     full_kbit_prep: bool = False   # True 면 비양자화 층을 float32 로 (메모리 더 씀, 문제 해결용)
     # 중간 계산을 버렸다가 역전파 때 다시 계산해 메모리를 아낌. 끄면 약 20~30% 빨라지지만 메모리를 훨씬 더 씀.
-    # Qwen3.5 선형 어텐션 층이 전용 커널 없이(torch 버전) 돌면 L4(24GB)에서도 부족했음 - A100 에서만 끄기를 시도.
+    # Gemma 4 는 어휘가 26만 개·층별 임베딩(PLE)이 16bit 로 남아 메모리를 많이 씁니다. A100 에서만 끄기를 시도.
     gradient_checkpointing: bool = True
     # --- 중간 점검 ---
     spot_check_every: int = 2      # 검증 n 번마다 몇 건을 실제로 생성해 봄 (0 이면 안 함)
@@ -62,12 +66,19 @@ class TrainConfig:
 # =============================================================================
 # LoRA 부착
 # =============================================================================
-_SKIP_PARTS = ("visual", "vision", "lm_head", "embed", "merger", "mm_projector", "audio")
+_SKIP_PARTS = ("visual", "vision", "lm_head", "embed", "merger", "mm_projector", "audio", "per_layer")
+# 표준 어텐션·MLP 투영층 이름. 이 이름이 있으면 여기에만 붙이고, 없는 구조면 언어 모델 선형층 전체에 붙입니다.
+_STANDARD_TARGETS = ("q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj")
 
 
 def pick_lora_targets(model) -> list[str]:
-    """언어 모델 쪽 선형층 이름 전체. (비전 인코더·출력층·임베딩 제외)"""
-    names = []
+    """
+    언어 모델 쪽 선형층 이름. (비전·오디오 인코더·출력층·임베딩·PLE 투영 제외)
+
+    Gemma 4 E4B 는 q/k/v/o_proj, gate/up/down_proj 를 씁니다. 비전·오디오 인코더에도 같은 이름이
+    있으므로 이름 끝만 보지 않고 경로에 vision/audio 가 들어간 것은 뺍니다.
+    """
+    linear = []
     for name, module in model.named_modules():
         cls = type(module).__name__
         if cls not in ("Linear", "Linear4bit", "Linear8bitLt"):
@@ -75,7 +86,9 @@ def pick_lora_targets(model) -> list[str]:
         lowered = name.lower()
         if any(part in lowered for part in _SKIP_PARTS):
             continue
-        names.append(name)
+        linear.append(name)
+    standard = [n for n in linear if n.rsplit(".", 1)[-1] in _STANDARD_TARGETS]
+    names = standard or linear
     if not names:
         raise RuntimeError("LoRA 를 붙일 선형층을 찾지 못했습니다.")
     return names
@@ -293,7 +306,7 @@ class LiveMonitor:
             self._overfit_warned = True
             self._warn(
                 f"step {state.global_step}: 검증 loss 가 세 번 연속 올랐습니다 - 과적합 신호입니다. "
-                "가장 좋았던 체크포인트가 자동으로 선택되며, 다음 학습은 epoch 을 줄여 보세요."
+                "가장 좋았던 체크포인트가 자동으로 선택됩니다. 다음 학습은 learning_rate 를 낮추거나 epoch 을 줄여 보세요."
             )
         self._evals += 1
         if self.spot_records and self.spot_every and self._evals % self.spot_every == 0:
@@ -458,6 +471,11 @@ def build_trainer(model, tokenizer, train_samples, val_samples, cfg: TrainConfig
     except TypeError:
         # 최신 transformers 는 warmup_ratio 대신 warmup_steps 에 0~1 비율을 받습니다.
         args = TrainingArguments(warmup_steps=cfg.warmup_ratio, **kwargs)
+    callbacks = [monitor.callback()] if monitor else []
+    if cfg.early_stopping_patience and cfg.early_stopping_patience > 0:
+        from transformers import EarlyStoppingCallback
+
+        callbacks.append(EarlyStoppingCallback(early_stopping_patience=cfg.early_stopping_patience))
     pad_id = tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id
     trainer = _trainer_class()(
         model=model,
@@ -465,7 +483,7 @@ def build_trainer(model, tokenizer, train_samples, val_samples, cfg: TrainConfig
         train_dataset=SampleDataset(train_samples),
         eval_dataset=SampleDataset(val_samples),
         data_collator=make_collator(pad_id),
-        callbacks=[monitor.callback()] if monitor else None,
+        callbacks=callbacks or None,
     )
     # 노트북 기본 진행 표시(표)는 그래프와 겹치므로 끕니다. 진행 상황은 LiveMonitor 가 보여 줌.
     try:
@@ -475,7 +493,8 @@ def build_trainer(model, tokenizer, train_samples, val_samples, cfg: TrainConfig
     except Exception:
         pass
     return trainer, {"steps_per_epoch": steps_per_epoch, "eval_steps": eval_steps,
-                     "total_steps": math.ceil(steps_per_epoch * cfg.epochs), "bf16": bf16}
+                     "total_steps": math.ceil(steps_per_epoch * cfg.epochs), "bf16": bf16,
+                     "early_stopping_patience": cfg.early_stopping_patience}
 
 
 def finish_training(trainer):

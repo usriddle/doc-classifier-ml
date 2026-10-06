@@ -3,7 +3,7 @@
 
 '문의' 로 판정된 질문과 비슷한 FAQ 몇 개만 골라 답변 프롬프트에 넣습니다.
 FAQ 가 수백 개로 늘어도 프롬프트에는 FAQ_TOP_K 개만 들어가므로 길이·속도가 그대로이고,
-비슷한 FAQ 가 하나도 없으면 Qwen 을 부르지 않고 고정 안내 문구로 답합니다. (지어낸 답 방지)
+비슷한 FAQ 가 하나도 없으면 Gemma 를 부르지 않고 고정 안내 문구로 답합니다. (지어낸 답 방지)
 
   data/faq.csv        원본 (사람이 편집하는 파일)
                       컬럼 id, question, variants, answer, category, source, updated_at
@@ -92,14 +92,14 @@ class FaqLookup:
     """FAQ 검색 결과. (DEBUG 확인용 + 답변 근거 기록)"""
 
     mode: str = "search"        # search | all | unavailable
-    fallback: bool = False      # True 면 Qwen 을 부르지 않고 고정 문구로 답함
+    fallback: bool = False      # True 면 Gemma 를 부르지 않고 고정 문구로 답함
     reason: str = ""
     hits: list[FaqHit] = field(default_factory=list)       # 상위 FAQ_TOP_K (기준 미달 포함 - 디버그용)
     selected: list[FaqHit] = field(default_factory=list)   # 실제로 프롬프트에 넣은 FAQ
     best_score: float = 0.0
     min_score: float = 0.0
-    model_declined: bool = False  # Qwen 이 "확인이 어렵다"고 답해 고정 문구로 바꿨는지
-    model_answer: str = ""        # Qwen 이 실제로 생성한 답 (Qwen 을 부르지 않았으면 빈 문자열)
+    model_declined: bool = False  # Gemma 가 "확인이 어렵다"고 답해 고정 문구로 바꿨는지
+    model_answer: str = ""        # Gemma 가 실제로 생성한 답 (Gemma 를 부르지 않았으면 빈 문자열)
 
 
 # =============================================================================
@@ -387,7 +387,7 @@ def lookup(question: str) -> FaqLookup:
         result.fallback = True
         result.reason = (
             f"1위 {result.best_score:.4f} < 기준 {min_score:.2f} - 비슷한 FAQ 가 없어 "
-            "Qwen 을 부르지 않고 고정 문구로 답함"
+            "Gemma 를 부르지 않고 고정 문구로 답함"
         )
     return result
 

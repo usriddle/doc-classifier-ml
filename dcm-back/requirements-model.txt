@@ -1,5 +1,5 @@
 # =============================================================================
-# requirements-model.txt - 분류 파이프라인 (③ 임베딩 / ④ 후보 추림 / ⑤ Qwen 판정)
+# requirements-model.txt - 분류 파이프라인 (③ 임베딩 / ④ 후보 추림 / ⑤ Gemma 판정)
 #
 # Colab T4 또는 GPU 리눅스 서버 전용입니다. 윈도우(PaddleOCR 환경)에는 설치하지 마세요.
 # 설치 순서·torch 제외 방법·bitsandbytes·transformers 최신판은 README.md 의 "1. 설치" 에 있습니다.
@@ -15,16 +15,17 @@ scikit-learn>=1.3                 # keybert 내부 의존성 (명시적으로 �
 # 시도해 "Unrecognized processing class in BAAI/bge-m3" 오류가 납니다. 5.4 미만으로 고정합니다.
 sentence-transformers>=3.0,<5.4    # transformers / huggingface-hub 를 함께 끌고 옵니다
 
-# --- ⑤ 판정 모델 : Qwen3.5-4B (+ QLoRA 어댑터) -----------------------------
-# Qwen3.5 를 못 알아보면(KeyError: 'qwen3_5') README 의 transformers 최신판 설치를 보세요.
-transformers>=4.57
-accelerate>=0.30                  # device_map / 큰 모델 로딩
-peft>=0.11                        # QLoRA(LoRA) 어댑터 로드. 어댑터가 없어도 설치해 두세요
+# --- ⑤ 판정 모델 : Gemma 4 E4B (google/gemma-4-E4B-it, + QLoRA 어댑터) ----------
+# Gemma 4 는 transformers 5.5 에서 들어왔습니다. 그보다 낡으면 KeyError: 'gemma4' 가 납니다.
+transformers>=5.5.0
+accelerate>=1.0                   # device_map / 큰 모델 로딩
+peft>=0.17                        # QLoRA(LoRA) 어댑터 로드. 어댑터가 없어도 설치해 두세요
 sentencepiece>=0.2                # 일부 토크나이저가 요구합니다
 protobuf>=4.25
 
 # --- 대화 이어가기 : Qwen-Agent (POST /api/v1/chat/message) -----------------
-# "어느 민원인가요?" -> "두 번째 거요" 를 함수 호출로 해석합니다. 모델은 위 Qwen 을 그대로 공유합니다.
+# "어느 민원인가요?" -> "두 번째 거요" 를 함수 호출로 해석하는 에이전트 프레임워크입니다.
+# 이름만 Qwen 이고, 모델은 위 Gemma 를 그대로 공유합니다. (Gemma 도구 호출 형식은 서버 코드가 변환)
 # 없으면 서버는 그대로 뜨고, 대화 이어가기만 규칙 기반 해석으로 동작합니다.
 qwen-agent>=0.0.30
 soundfile                         # qwen-agent 가 import 하지만 의존성에 빠져 있어 따로 넣습니다

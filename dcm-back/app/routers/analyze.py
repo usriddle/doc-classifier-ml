@@ -1,5 +1,5 @@
 """
-분류 파이프라인 API (③ 임베딩 -> ④ 후보 추림 -> ⑤ Qwen 판정).
+분류 파이프라인 API (③ 임베딩 -> ④ 후보 추림 -> ⑤ Gemma 판정).
 
 POST /api/v1/analyze/text        : 문장만 넣어 ②~⑤ 테스트 (파일 없음)
 POST /api/v1/analyze/file        : 파일 업로드 -> ② 추출 -> ③④⑤
@@ -56,7 +56,7 @@ _ERROR_RESPONSES = {
     422: {"model": ErrorResponse, "description": "추출 실패 또는 텍스트 없음"},
     503: {
         "model": ErrorResponse,
-        "description": "모델 미설치·로드 실패 (bge-m3 / Qwen), 또는 PP-OCRv5 미설치",
+        "description": "모델 미설치·로드 실패 (bge-m3 / Gemma), 또는 PP-OCRv5 미설치",
     },
 }
 
@@ -252,12 +252,12 @@ async def _read_upload(upload: UploadFile) -> bytes:
         "**처리 순서**\n"
         "1. 원문에서 키워드 3개 + 요약문을 만듭니다. (kiwipiepy + KeyBERT + TextRank)\n"
         "2. 그 질의문을 bge-m3 로 1024차원 벡터로 만듭니다. (③)\n"
-        "3. 카테고리 7종 정의문과 코사인 유사도를 계산해 상위 4개를 추립니다. (④, 후보만 좁힘) "
-        "벡터DB 의 비슷한 라벨링 사례로 상위 4개를 다시 정렬합니다. "
+        "3. 카테고리 7종 정의문과 코사인 유사도를 계산해 상위 3개를 추립니다. (④, 후보만 좁힘) "
+        "벡터DB 의 비슷한 라벨링 사례로 상위 3개를 다시 정렬합니다. "
         "(`CASE_MODE`: low_confidence 면 1위 유사도가 `CANDIDATE_MIN_SCORE` 미만일 때만, "
         "always·union 이면 매번)\n"
-        "4. Qwen3.5-4B 가 의도를 6지선다로 판정합니다. 문의·접수·조회·수정·삭제 중 "
-        "하나면 이어서 후보 4개 중 카테고리를 확정하고 도구 호출 JSON 을 만듭니다. "
+        "4. Gemma 4 E4B 가 의도를 6지선다로 판정합니다. 문의·접수·조회·수정·삭제 중 "
+        "하나면 이어서 후보 3개 중 카테고리를 확정하고 도구 호출 JSON 을 만듭니다. "
         "**어디에도 해당하지 않아 '해당없음'으로 판정되면 카테고리·도구 없이 여기서 멈추고 "
         "`status=\"rejected\"` 와 안내 문구(`answer`)만 돌려줍니다.** "
         "카테고리(④)와는 무관한 판단이라, \"제가 어제 문의한 내용 보여줘\"처럼 특정 "
@@ -265,7 +265,7 @@ async def _read_upload(upload: UploadFile) -> bytes:
         "5. 접수·조회·수정·삭제는 도구 호출 JSON 을 실제 SQLite DB 에 바로 실행합니다. (⑥) "
         "실행 전 소유권(본인 민원인지)·상태(이미 취소된 건 아닌지) 등을 검증하고, 통과하면 "
         "즉시 반영합니다. 결과는 `tool_result` 에 담깁니다.\n\n"
-        "**첫 요청은 느립니다.** bge-m3(약 2.2GB)와 Qwen3.5-4B(약 8GB) 가중치를 내려받고 "
+        "**첫 요청은 느립니다.** bge-m3(약 2.2GB)와 Gemma 4 E4B(약 16GB) 가중치를 내려받고 "
         "메모리에 올리기 때문입니다. 두 번째 요청부터는 로드된 모델을 재사용합니다.\n\n"
         "`user_id` 를 비우면 서버 기본값(`COMPLAINT_DEFAULT_USER`) 하나로 통일됩니다. "
         "조회·수정·삭제는 같은 `user_id` 로 등록한 민원만 대상이 됩니다.\n\n"
@@ -367,7 +367,7 @@ async def list_categories() -> CategoriesResponse:
     response_model=PipelineStatusResponse,
     summary="모델 설치·로드 상태",
     description=(
-        "bge-m3 / Qwen 이 설치되어 있는지, 이미 메모리에 올라와 있는지 확인합니다. "
+        "bge-m3 / Gemma 가 설치되어 있는지, 이미 메모리에 올라와 있는지 확인합니다. "
         "`case_store` 에서 벡터DB(라벨링된 사례) 준비 상태와 사례 수를, "
         "`faq_store` 에서 '문의' 답변용 FAQ 검색 준비 상태를 볼 수 있습니다.\n"
         "`loaded=false` 면 다음 요청에서 가중치를 내려받고 로드하느라 느릴 수 있습니다."
